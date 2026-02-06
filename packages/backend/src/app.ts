@@ -26,13 +26,13 @@ const app: Express = express();
 app.use(express.json());
 
 // Set UTF-8 charset for JSON responses
-app.use((_req: Request, res: Response, next: Function) => {
+app.use((_req: Request, res: Response, next: () => void) => {
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
   next();
 });
 
 // Health check
-app.get('/api/health', (_req: Request, res: Response) => {
+app.get('/api/health', (_: Request, res: Response) => {
   res.json({
     status: 'ok',
     version,
@@ -107,7 +107,7 @@ app.get('/api/projects/:id', requireAuth, async (req: Request, res: Response) =>
   }
 });
 
-app.get('/api/projects', requireAuth, async (req: Request, res: Response) => {
+app.get('/api/projects', requireAuth, async (_: Request, res: Response) => {
   try {
     const projects = await listProjects(50);
     res.json(projects);
@@ -155,7 +155,7 @@ app.get('/api/customers/:id', requireAuth, async (req: Request, res: Response) =
   }
 });
 
-app.get('/api/customers', requireAuth, async (req: Request, res: Response) => {
+app.get('/api/customers', requireAuth, async (_: Request, res: Response) => {
   try {
     const customers = await listCustomers(50);
     res.json(customers);
@@ -203,7 +203,7 @@ app.get('/api/quotes/:id', requireAuth, async (req: Request, res: Response) => {
   }
 });
 
-app.get('/api/quotes', requireAuth, async (req: Request, res: Response) => {
+app.get('/api/quotes', requireAuth, async (_: Request, res: Response) => {
   try {
     const quotes = await listQuotes(50);
     res.json(quotes);
