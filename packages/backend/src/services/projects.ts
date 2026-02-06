@@ -1,5 +1,4 @@
 import { getDatabasePool, withOrgContext } from '../config/database';
-import { UserPayload } from './auth';
 
 export interface ProjectInput {
   customer_name: string;
@@ -13,40 +12,56 @@ export interface Project {
   created_at: string;
 }
 
+/** Payload for POST /api/projects (F-20). */
+export interface CreateProjectPayload {
+  customer_id: string;
+  name: string;
+  address?: string | null;
+  notes?: string | null;
+}
+
+/** Result shape for 201 response (F-20). Schema has customer_name, address only; customer_id/name/notes from payload. */
+export interface ProjectCreateResult {
+  id: string;
+  customer_id: string;
+  name: string;
+  address: string | null;
+  notes: string | null;
+  status?: string;
+  created_at: string;
+}
+
+export type CreateProjectResult =
+  | { kind: 'customer_not_found' }
+  | { kind: 'ok'; project: ProjectCreateResult };
+
 export async function createProject(
-  input: ProjectInput,
-  user: UserPayload,
-  organizationId: string
-): Promise<Project> {
-  const pool = getDatabasePool();
-  if (!pool) {
-    throw new Error('Database pool not initialized');
-  }
-
+  organizationId: string,
+  payload: CreateProjectPayload
+): Promise<CreateProjectResult> {
   return await withOrgContext(organizationId, async (client) => {
-    try {
-      await client.query('BEGIN');
-
-      // Insert project
-      const projectResult = await client.query(
-        'INSERT INTO projects (organization_id, customer_name, address) VALUES ($1, $2, $3) RETURNING id, customer_name, address, created_at',
-        [organizationId, input.customer_name, input.address || null]
-      );
-
-      const project = projectResult.rows[0] as Project;
-
-      // Audit log
-      await client.query(
-        'INSERT INTO audit_events (actor, action, payload) VALUES ($1, $2, $3)',
-        [user.email, 'project.create', JSON.stringify({ project_id: project.id })]
-      );
-
-      await client.query('COMMIT');
-      return project;
-    } catch (error) {
-      await client.query('ROLLBACK');
-      throw error;
+    const existCustomer = await client.query('SELECT id FROM customers WHERE id = $1', [payload.customer_id]);
+    if (existCustomer.rows.length === 0) {
+      return { kind: 'customer_not_found' };
     }
+
+    const projectResult = await client.query(
+      'INSERT INTO projects (organization_id, customer_name, address) VALUES ($1, $2, $3) RETURNING id, customer_name, address, created_at',
+      [organizationId, payload.name, payload.address ?? null]
+    );
+    const row = projectResult.rows[0] as { id: string; customer_name: string; address: string | null; created_at: string };
+    return {
+      kind: 'ok',
+      project: {
+        id: row.id,
+        customer_id: payload.customer_id,
+        name: row.customer_name,
+        address: row.address,
+        notes: payload.notes ?? null,
+        status: 'draft',
+        created_at: row.created_at,
+      },
+    };
   });
 }
 

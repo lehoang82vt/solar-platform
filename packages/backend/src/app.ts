@@ -75,19 +75,56 @@ app.get('/api/me', requireAuth, (req: Request, res: Response) => {
   res.json(req.user);
 });
 
-// Projects endpoints
+// Projects endpoints (F-20: customer_id + name, audit project.create / project.create.customer_not_found)
 app.post('/api/projects', requireAuth, async (req: Request, res: Response) => {
   try {
-    const { customer_name, address } = req.body;
+    const body = req.body as { customer_id?: unknown; name?: unknown; address?: unknown; notes?: unknown };
+    const customer_id = body.customer_id;
+    const name = body.name;
 
-    if (!customer_name) {
-      res.status(400).json({ error: 'customer_name required' });
+    if (customer_id === undefined || customer_id === null) {
+      res.status(400).json({ error: 'customer_id required' });
+      return;
+    }
+    if (typeof customer_id !== 'string' || !isValidCustomerId(customer_id)) {
+      res.status(400).json({ error: 'invalid customer_id' });
+      return;
+    }
+    if (name === undefined || name === null || typeof name !== 'string' || name.trim() === '') {
+      res.status(400).json({ error: 'name required' });
       return;
     }
 
     const organizationId = await getDefaultOrganizationId();
-    const project = await createProject({ customer_name, address }, req.user!, organizationId);
-    res.status(201).json(project);
+    const result = await createProject(organizationId, {
+      customer_id,
+      name: name.trim(),
+      address: body.address != null ? (typeof body.address === 'string' ? body.address : null) : undefined,
+      notes: body.notes != null ? (typeof body.notes === 'string' ? body.notes : null) : undefined,
+    });
+
+    if (result.kind === 'customer_not_found') {
+      await auditLogWrite({
+        organization_id: organizationId,
+        actor: req.user!.email,
+        action: 'project.create.customer_not_found',
+        entity_type: 'project',
+        metadata: { customer_id },
+      });
+      res.status(404).json({ error: 'Customer not found' });
+      return;
+    }
+
+    await auditLogWrite({
+      organization_id: organizationId,
+      actor: req.user!.email,
+      action: 'project.create',
+      entity_type: 'project',
+      entity_id: result.project.id,
+      metadata: { project_id: result.project.id, customer_id },
+    });
+
+    res.status(201).json({ value: result.project });
   } catch (error) {
     console.error('Create project error:', error);
     res.status(500).json({ error: 'Internal server error' });
