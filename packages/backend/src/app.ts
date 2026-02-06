@@ -8,6 +8,16 @@ import {
   getProjectById,
   listProjects,
 } from './services/projects';
+import {
+  createCustomer,
+  getCustomerById,
+  listCustomers,
+} from './services/customers';
+import {
+  createQuoteDraft,
+  getQuoteById,
+  listQuotes,
+} from './services/quotes';
 
 const app: Express = express();
 
@@ -101,6 +111,102 @@ app.get('/api/projects', requireAuth, async (req: Request, res: Response) => {
     res.json(projects);
   } catch (error) {
     console.error('List projects error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Customers endpoints
+app.post('/api/customers', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const { name, phone, email, address } = req.body;
+
+    if (!name) {
+      res.status(400).json({ error: 'name required' });
+      return;
+    }
+
+    const customer = await createCustomer(
+      { name, phone, email, address },
+      req.user!
+    );
+    res.status(201).json(customer);
+  } catch (error) {
+    console.error('Create customer error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.get('/api/customers/:id', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const customer = await getCustomerById(id);
+
+    if (!customer) {
+      res.status(404).json({ error: 'Not found' });
+      return;
+    }
+
+    res.json(customer);
+  } catch (error) {
+    console.error('Get customer error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.get('/api/customers', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const customers = await listCustomers(50);
+    res.json(customers);
+  } catch (error) {
+    console.error('List customers error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Quotes endpoints
+app.post('/api/quotes', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const { customer_id, payload } = req.body;
+
+    if (!customer_id) {
+      res.status(400).json({ error: 'customer_id required' });
+      return;
+    }
+
+    const quote = await createQuoteDraft(
+      { customer_id, payload },
+      req.user!
+    );
+    res.status(201).json(quote);
+  } catch (error) {
+    console.error('Create quote error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.get('/api/quotes/:id', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const quote = await getQuoteById(id);
+
+    if (!quote) {
+      res.status(404).json({ error: 'Not found' });
+      return;
+    }
+
+    res.json(quote);
+  } catch (error) {
+    console.error('Get quote error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.get('/api/quotes', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const quotes = await listQuotes(50);
+    res.json(quotes);
+  } catch (error) {
+    console.error('List quotes error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
