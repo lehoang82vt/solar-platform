@@ -215,37 +215,84 @@ app.get('/api/quotes/:id', requireAuth, async (req: Request, res: Response) => {
   }
 });
 
+const VALID_QUOTE_LIST_STATUSES = ['draft', 'sent', 'accepted', 'rejected'];
+
 app.get('/api/quotes', requireAuth, async (req: Request, res: Response) => {
   try {
     // Extract and validate limit from query params
     let limit = 20;
-    if (req.query.limit) {
+    if (req.query.limit !== undefined) {
       const parsedLimit = parseInt(req.query.limit as string, 10);
-      if (!isNaN(parsedLimit)) {
-        limit = Math.max(1, Math.min(parsedLimit, 100)); // Clamp 1..100
+      if (isNaN(parsedLimit)) {
+        res.status(400).json({ error: 'invalid limit' });
+        return;
       }
+      limit = Math.max(1, Math.min(parsedLimit, 100)); // Clamp 1..100
     }
 
     // Extract and validate offset from query params
     let offset = 0;
-    if (req.query.offset) {
+    if (req.query.offset !== undefined) {
       const parsedOffset = parseInt(req.query.offset as string, 10);
-      if (!isNaN(parsedOffset)) {
-        offset = Math.max(0, parsedOffset);
+      if (isNaN(parsedOffset)) {
+        res.status(400).json({ error: 'invalid offset' });
+        return;
+      }
+      offset = Math.max(0, Math.min(parsedOffset, 100000)); // Clamp 0..100000
+    }
+
+    // status: optional; if provided must be one of enum
+    let statusFilter: string | undefined;
+    if (req.query.status !== undefined) {
+      if (typeof req.query.status !== 'string') {
+        res.status(400).json({ error: 'invalid status' });
+        return;
+      }
+      if (!VALID_QUOTE_LIST_STATUSES.includes(req.query.status)) {
+        res.status(400).json({ error: 'invalid status' });
+        return;
+      }
+      statusFilter = req.query.status;
+    }
+
+    // q: optional; if provided must be string, trim; empty after trim => undefined; max length 100
+    let qFilter: string | undefined;
+    if (req.query.q !== undefined) {
+      if (typeof req.query.q !== 'string') {
+        res.status(400).json({ error: 'q too long' });
+        return;
+      }
+      const trimmed = req.query.q.trim();
+      if (trimmed.length > 100) {
+        res.status(400).json({ error: 'q too long' });
+        return;
+      }
+      if (trimmed.length > 0) {
+        qFilter = trimmed;
       }
     }
 
     const organizationId = await getDefaultOrganizationId();
-    // Call listQuotes service which returns { value, count }
-    const result = await listQuotes(organizationId, limit, offset);
+    const filters = (statusFilter !== undefined || qFilter !== undefined)
+      ? { status: statusFilter, q: qFilter }
+      : undefined;
+    const result = await listQuotes(organizationId, limit, offset, filters);
 
-    // Log audit event to audit_logs (F-05 foundation)
+    // Log audit event to audit_logs (F-05 foundation); metadata includes status/q when present
+    const metadata: Record<string, unknown> = {
+      limit,
+      offset,
+      result_count: result.value.length,
+    };
+    if (statusFilter !== undefined) metadata.status = statusFilter;
+    if (qFilter !== undefined) metadata.q = qFilter;
+
     await auditLogWrite({
       organization_id: organizationId,
       actor: req.user!.email,
       action: 'quote.list',
       entity_type: 'quote',
-      metadata: { limit, offset, result_count: result.value.length },
+      metadata,
     });
 
     res.json(result);

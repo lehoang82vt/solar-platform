@@ -183,9 +183,30 @@ export async function getQuoteById(id: string): Promise<Quote | null> {
 export async function listQuotes(
   organizationId: string,
   limit: number = 20,
-  offset: number = 0
+  offset: number = 0,
+  filters?: { status?: string; q?: string }
 ): Promise<{ value: Quote[]; count: number }> {
   return await withOrgContext(organizationId, async (client) => {
+    const conditions: string[] = [];
+    const params: (number | string)[] = [limit, offset];
+    let paramIndex = 3;
+
+    if (filters?.status) {
+      conditions.push(`quotes.status = $${paramIndex}`);
+      params.push(filters.status);
+      paramIndex += 1;
+    }
+    if (filters?.q) {
+      const likePattern = '%' + filters.q + '%';
+      conditions.push(
+        `(customers.name ILIKE $${paramIndex} OR customers.phone ILIKE $${paramIndex} OR customers.email ILIKE $${paramIndex})`
+      );
+      params.push(likePattern);
+      paramIndex += 1;
+    }
+
+    const whereClause = conditions.length > 0 ? ' WHERE ' + conditions.join(' AND ') : '';
+
     const result = await client.query(
       `SELECT 
          quotes.id, 
@@ -195,14 +216,39 @@ export async function listQuotes(
          quotes.created_at 
        FROM quotes 
        JOIN customers ON quotes.customer_id = customers.id 
+       ${whereClause}
        ORDER BY quotes.created_at DESC 
        LIMIT $1
        OFFSET $2`,
-      [limit, offset]
+      params
     );
 
-    const countResult = await client.query('SELECT COUNT(*) FROM quotes');
-    const count = parseInt(countResult.rows[0].count, 10);
+    const countParams: (string | number)[] = [];
+    const countConditions: string[] = [];
+    let countParamIndex = 1;
+    if (filters?.status) {
+      countConditions.push(`quotes.status = $${countParamIndex}`);
+      countParams.push(filters.status);
+      countParamIndex += 1;
+    }
+    if (filters?.q) {
+      const likePattern = '%' + filters.q + '%';
+      countConditions.push(
+        `(customers.name ILIKE $${countParamIndex} OR customers.phone ILIKE $${countParamIndex} OR customers.email ILIKE $${countParamIndex})`
+      );
+      countParams.push(likePattern);
+      countParamIndex += 1;
+    }
+    const countWhere =
+      countConditions.length > 0
+        ? ' FROM quotes JOIN customers ON quotes.customer_id = customers.id WHERE ' +
+          countConditions.join(' AND ')
+        : ' FROM quotes';
+    const countResult = await client.query(
+      `SELECT COUNT(*)::int ${countWhere}`,
+      countParams.length > 0 ? countParams : undefined
+    );
+    const count = parseInt(String(countResult.rows[0].count), 10);
 
     const value = result.rows.map((row) => ({
       id: row.id,
