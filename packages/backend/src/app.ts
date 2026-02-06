@@ -5,6 +5,7 @@ import { authenticateUser, generateToken } from './services/auth';
 import { requireAuth } from './middleware/auth';
 import {
   createProject,
+  deleteProject,
   getProjectByIdOrgSafe,
   isValidProjectId,
   listProjectsV2,
@@ -263,6 +264,44 @@ app.get('/api/projects', requireAuth, async (req: Request, res: Response) => {
     res.status(200).json({ value: items });
   } catch (error) {
     console.error('List projects error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.delete('/api/projects/:id', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    if (!isValidProjectId(id)) {
+      res.status(400).json({ error: 'invalid id' });
+      return;
+    }
+    const organizationId = await getDefaultOrganizationId();
+    const result = await deleteProject(organizationId, id);
+
+    if (!result) {
+      await auditLogWrite({
+        organization_id: organizationId,
+        actor: req.user!.email,
+        action: 'project.delete.not_found',
+        entity_type: 'project',
+        metadata: { project_id: id },
+      });
+      res.status(404).json({ error: 'Project not found' });
+      return;
+    }
+
+    await auditLogWrite({
+      organization_id: organizationId,
+      actor: req.user!.email,
+      action: 'project.delete',
+      entity_type: 'project',
+      entity_id: result.id,
+      metadata: { project_id: id },
+    });
+
+    res.status(200).json({ value: { id: result.id } });
+  } catch (error) {
+    console.error('Delete project error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

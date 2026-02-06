@@ -134,14 +134,28 @@ export async function updateProject(
   });
 }
 
-/** Get project by id (org-safe). Returns null if not found in org. */
+/** Get project by id (org-safe). Returns null if not found or soft-deleted. */
 export async function getProjectByIdOrgSafe(
   id: string,
   organizationId: string
 ): Promise<ProjectDetail | null> {
   return await withOrgContext(organizationId, async (client) => {
+    const colResult = await client.query(
+      `SELECT column_name FROM information_schema.columns
+       WHERE table_schema = 'public' AND table_name = 'projects'
+       AND column_name IN ('is_active', 'deleted_at')`,
+      []
+    );
+    const columns = new Set((colResult.rows as { column_name: string }[]).map((r) => r.column_name));
+    let where = 'id = $1';
+    if (columns.has('is_active')) {
+      where += ' AND (is_active IS NULL OR is_active = true)';
+    } else if (columns.has('deleted_at')) {
+      where += ' AND deleted_at IS NULL';
+    }
+
     const result = await client.query(
-      'SELECT id, customer_name, address, created_at FROM projects WHERE id = $1',
+      `SELECT id, customer_name, address, created_at FROM projects WHERE ${where}`,
       [id]
     );
     if (result.rows.length === 0) {
@@ -223,5 +237,37 @@ export async function listProjectsV2(
         created_at: row.created_at,
       })
     );
+  });
+}
+
+/** Delete project by id (org-safe). Soft delete if is_active/deleted_at exists, else hard delete. Returns { id } or null. */
+export async function deleteProject(
+  organizationId: string,
+  id: string
+): Promise<{ id: string } | null> {
+  return await withOrgContext(organizationId, async (client) => {
+    const existResult = await client.query('SELECT id FROM projects WHERE id = $1', [id]);
+    if (existResult.rows.length === 0) {
+      return null;
+    }
+
+    const colResult = await client.query(
+      `SELECT column_name FROM information_schema.columns
+       WHERE table_schema = 'public' AND table_name = 'projects'
+       AND column_name IN ('is_active', 'deleted_at')`,
+      []
+    );
+    const columns = new Set((colResult.rows as { column_name: string }[]).map((r) => r.column_name));
+
+    if (columns.has('is_active')) {
+      await client.query('UPDATE projects SET is_active = false WHERE id = $1', [id]);
+      return { id };
+    }
+    if (columns.has('deleted_at')) {
+      await client.query('UPDATE projects SET deleted_at = now() WHERE id = $1', [id]);
+      return { id };
+    }
+    await client.query('DELETE FROM projects WHERE id = $1', [id]);
+    return { id };
   });
 }
