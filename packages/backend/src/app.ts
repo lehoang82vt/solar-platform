@@ -18,6 +18,7 @@ import {
   getQuoteById,
   listQuotes,
   updateQuotePayload,
+  updateQuoteStatus,
 } from './services/quotes';
 
 const app: Express = express();
@@ -226,6 +227,33 @@ app.patch('/api/quotes/:id/payload', requireAuth, async (req: Request, res: Resp
     res.json(quote);
   } catch (error) {
     console.error('Update quote payload error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.patch('/api/quotes/:id/status', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+
+    if (!status) {
+      res.status(400).json({ error: 'status required' });
+      return;
+    }
+
+    const quote = await updateQuoteStatus(id, status, req.user!);
+    res.json(quote);
+  } catch (error: unknown) {
+    const err = error as Error;
+    if (err.message.includes('Cannot transition') || err.message.includes('Invalid status')) {
+      res.status(400).json({ error: err.message });
+      return;
+    }
+    if (err.message.includes('not found')) {
+      res.status(404).json({ error: 'Not found' });
+      return;
+    }
+    console.error('Update quote status error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
