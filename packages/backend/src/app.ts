@@ -17,6 +17,7 @@ import {
   createQuoteDraft,
   getQuoteById,
   listQuotes,
+  updateQuotePayload,
 } from './services/quotes';
 
 const app: Express = express();
@@ -207,6 +208,24 @@ app.get('/api/quotes', requireAuth, async (req: Request, res: Response) => {
     res.json(quotes);
   } catch (error) {
     console.error('List quotes error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.patch('/api/quotes/:id/payload', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const payload = req.body;
+
+    if (!payload) {
+      res.status(400).json({ error: 'payload required' });
+      return;
+    }
+
+    const quote = await updateQuotePayload(id, payload, req.user!);
+    res.json(quote);
+  } catch (error) {
+    console.error('Update quote payload error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

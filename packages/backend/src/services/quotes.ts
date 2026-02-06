@@ -1,21 +1,23 @@
 import { getDatabasePool } from '../config/database';
 import { UserPayload } from './auth';
 
-export interface QuoteInput {
-  customer_id: string;
-  payload?: Record<string, unknown>;
+export interface QuotePayload {
+  system_kwp?: number;
+  annual_kwh?: number;
+  estimated_cost?: number;
+  [key: string]: unknown;
 }
 
 export interface Quote {
   id: string;
   customer_id: string;
   status: string;
-  payload: Record<string, unknown>;
+  payload: QuotePayload;
   created_at: string;
 }
 
 export async function createQuoteDraft(
-  input: QuoteInput,
+  input: { customer_id: string; payload?: Record<string, unknown> },
   user: UserPayload
 ): Promise<Quote> {
   const pool = getDatabasePool();
@@ -34,13 +36,56 @@ export async function createQuoteDraft(
 
     const quote = quoteResult.rows[0] as Quote;
 
-    // Audit log
     await client.query(
       'INSERT INTO audit_events (actor, action, payload) VALUES ($1, $2, $3)',
       [
         user.email,
         'quote.create',
         JSON.stringify({ quote_id: quote.id, customer_id: input.customer_id }),
+      ]
+    );
+
+    await client.query('COMMIT');
+    return quote;
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+export async function updateQuotePayload(
+  id: string,
+  payload: QuotePayload,
+  user: UserPayload
+): Promise<Quote> {
+  const pool = getDatabasePool();
+  if (!pool) {
+    throw new Error('Database pool not initialized');
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const quoteResult = await client.query(
+      'UPDATE quotes SET payload = $1 WHERE id = $2 RETURNING id, customer_id, status, payload, created_at',
+      [JSON.stringify(payload), id]
+    );
+
+    if (quoteResult.rows.length === 0) {
+      throw new Error('Quote not found');
+    }
+
+    const quote = quoteResult.rows[0] as Quote;
+
+    await client.query(
+      'INSERT INTO audit_events (actor, action, payload) VALUES ($1, $2, $3)',
+      [
+        user.email,
+        'quote.update_payload',
+        JSON.stringify({ quote_id: id, changes: payload }),
       ]
     );
 
