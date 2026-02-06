@@ -13,6 +13,12 @@ const app: Express = express();
 
 app.use(express.json());
 
+// Set UTF-8 charset for JSON responses
+app.use((_req: Request, res: Response, next: Function) => {
+  res.setHeader('Content-Type', 'application/json; charset=utf-8');
+  next();
+});
+
 // Health check
 app.get('/api/health', (_req: Request, res: Response) => {
   res.json({
