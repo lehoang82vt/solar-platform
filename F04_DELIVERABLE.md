@@ -1,17 +1,36 @@
-# F-04: JWT AUTHENTICATION - DELIVERABLE
+# F-04: JWT AUTHENTICATION - DELIVERABLE (with F-04b Hotfix)
 
-## ✅ SCOPE: JWT Login + RequireAuth + /api/me (tối giản)
+## ✅ SCOPE: JWT Login + RequireAuth + /api/me (tối giản) + Token Safety
 
 - ✅ JWT Login: `POST /api/auth/login` → `{ access_token }`
 - ✅ Require Auth Middleware: Verify Bearer token
 - ✅ Get Current User: `GET /api/me` → `{ id, email, role }`
-- ✅ Admin seed from env variables
+- ✅ Admin seed from env variables (pgcrypto only)
 - ✅ **No JWT logging** (security)
+- ✅ **No bcrypt - pgcrypto xuyên suốt** (consistency)
+- ✅ **Token never printed to console**
 - ✅ **No refresh token, no RBAC complexity**
 
 ---
 
-## 📋 FILES CREATED/MODIFIED
+## 📋 CHANGES (F-04b Hotfix)
+
+### Key Changes:
+- ✅ Removed `bcrypt` dependency
+- ✅ Auth now uses PostgreSQL `crypt()` function (pgcrypto)
+- ✅ Single source of truth: pgcrypto for all password hashing
+- ✅ Token safety: never write token to stdout
+
+### Files Changed:
+- `packages/backend/src/services/auth.ts` - Use SQL `crypt()` instead of bcrypt
+- `packages/backend/package.json` - Remove bcrypt, @types/bcrypt
+
+### Migration (unchanged):
+- `packages/backend/migrations/002_auth.sql` - Uses `crypt()` with `gen_salt('bf')`
+
+---
+
+## 📋 FILES CREATED/MODIFIED (F-04 + F-04b)
 
 ### 1. Migration: packages/backend/migrations/002_auth.sql
 
@@ -61,7 +80,93 @@ ADMIN_PASSWORD=AdminPassword123
 
 ---
 
-## ✅ VERIFICATION RESULTS (RAW OUTPUT)
+## ✅ VERIFICATION RESULTS (RAW OUTPUT - F-04b)
+
+### 1. Login - No token leaked
+
+**Input:**
+```powershell
+$body = @{ email = "admin@solar.local"; password = "AdminPassword123" } | ConvertTo-Json
+$resp = irm http://localhost:3000/api/auth/login -Method Post -ContentType 'application/json' -Body $body
+$env:SOLAR_TOKEN = $resp.access_token
+Write-Host "login success"
+```
+
+**Output:**
+```
+login success
+```
+
+✅ **PASS**: No token printed to console
+
+---
+
+### 2. GET /api/me - Valid token
+
+**Input:**
+```powershell
+irm http://localhost:3000/api/me -Headers @{ Authorization = "Bearer $env:SOLAR_TOKEN" } | ConvertTo-Json -Depth 10
+```
+
+**Output:**
+```json
+{
+    "id":  "492daaab-76ba-45ad-b5ab-55dc54be9da8",
+    "email":  "admin@solar.local",
+    "role":  "admin",
+    "iat":  1770353071,
+    "exp":  1770957871
+}
+```
+
+✅ **PASS**: Returns correct user info
+
+---
+
+### 3. GET /api/me - Bad token
+
+**Input:**
+```powershell
+try { irm http://localhost:3000/api/me -Headers @{ Authorization = "Bearer bad" } } catch { Write-Host "Status: $($_.Exception.Response.StatusCode.value__)" }
+```
+
+**Output:**
+```
+Status: 401
+```
+
+✅ **PASS**: Bad token returns 401
+
+---
+
+## 🎯 PASS CRITERIA (F-04b) - ALL MET ✅
+
+| Criteria | Expected | Actual | Status |
+|----------|----------|--------|--------|
+| Login | No token leak | ✓ Not printed | ✅ PASS |
+| /api/me valid token | User info | ✓ Correct data | ✅ PASS |
+| /api/me bad token | 401 error | ✓ Rejected | ✅ PASS |
+| Hash consistency | pgcrypto only | ✓ SQL crypt() | ✅ PASS |
+| No bcrypt | Removed | ✓ Not in deps | ✅ PASS |
+| No "eyJ..." in logs | Not printed | ✓ Clean output | ✅ PASS |
+
+---
+
+## 📝 GIT COMMIT (F-04b)
+
+```
+Commit: 1f127e0
+Message: fix: F-04 token safety + hash consistency (pgcrypto only)
+Files Changed: 4
+- packages/backend/src/services/auth.ts (updated)
+- packages/backend/package.json (updated)
+- F04_DELIVERABLE.md (updated)
+- package-lock.json
+```
+
+---
+
+## 🎯 ORIGINAL VERIFICATION RESULTS (F-04)
 
 ### 1. npm run migrate
 

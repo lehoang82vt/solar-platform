@@ -3,6 +3,11 @@ import { isDatabaseConnected } from './config/database';
 import { version } from '../../shared/src';
 import { authenticateUser, generateToken } from './services/auth';
 import { requireAuth } from './middleware/auth';
+import {
+  createProject,
+  getProjectById,
+  listProjects,
+} from './services/projects';
 
 const app: Express = express();
 
@@ -44,6 +49,54 @@ app.post('/api/auth/login', async (req: Request, res: Response) => {
 // Get current user
 app.get('/api/me', requireAuth, (req: Request, res: Response) => {
   res.json(req.user);
+});
+
+// Projects endpoints
+app.post('/api/projects', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const { customer_name, address } = req.body;
+
+    if (!customer_name) {
+      res.status(400).json({ error: 'customer_name required' });
+      return;
+    }
+
+    const project = await createProject(
+      { customer_name, address },
+      req.user!
+    );
+    res.status(201).json(project);
+  } catch (error) {
+    console.error('Create project error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.get('/api/projects/:id', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const project = await getProjectById(id);
+
+    if (!project) {
+      res.status(404).json({ error: 'Not found' });
+      return;
+    }
+
+    res.json(project);
+  } catch (error) {
+    console.error('Get project error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.get('/api/projects', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const projects = await listProjects(50);
+    res.json(projects);
+  } catch (error) {
+    console.error('List projects error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 export default app;
