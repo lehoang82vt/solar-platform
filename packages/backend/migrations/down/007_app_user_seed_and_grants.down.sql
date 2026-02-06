@@ -2,6 +2,9 @@
 
 REVOKE SELECT ON audit_logs FROM app_user;
 REVOKE SELECT ON organizations FROM app_user;
+REVOKE SELECT ON quotes FROM app_user;
+REVOKE SELECT ON customers FROM app_user;
+REVOKE SELECT ON projects FROM app_user;
 REVOKE USAGE ON SCHEMA public FROM app_user;
 
 DO $$

@@ -17,6 +17,9 @@ ALTER ROLE app_user NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION 
 GRANT USAGE ON SCHEMA public TO app_user;
 GRANT SELECT ON organizations TO app_user;
 GRANT SELECT ON audit_logs TO app_user;
+GRANT SELECT ON quotes TO app_user;
+GRANT SELECT ON customers TO app_user;
+GRANT SELECT ON projects TO app_user;
 
 -- Seed a deterministic audit_logs row for default org (only if empty)
 INSERT INTO audit_logs (organization_id, actor, action, entity_type, entity_id, metadata)
