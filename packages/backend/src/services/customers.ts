@@ -1,4 +1,4 @@
-import { getDatabasePool } from '../config/database';
+import { getDatabasePool, withOrgContext } from '../config/database';
 import { UserPayload } from './auth';
 
 export interface CustomerInput {
@@ -19,42 +19,44 @@ export interface Customer {
 
 export async function createCustomer(
   input: CustomerInput,
-  user: UserPayload
+  user: UserPayload,
+  organizationId: string
 ): Promise<Customer> {
   const pool = getDatabasePool();
   if (!pool) {
     throw new Error('Database pool not initialized');
   }
 
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
+  return await withOrgContext(organizationId, async (client) => {
+    try {
+      await client.query('BEGIN');
 
-    const customerResult = await client.query(
-      'INSERT INTO customers (name, phone, email, address) VALUES ($1, $2, $3, $4) RETURNING id, name, phone, email, address, created_at',
-      [input.name, input.phone || null, input.email || null, input.address || null]
-    );
+      const customerResult = await client.query(
+        'INSERT INTO customers (organization_id, name, phone, email, address) VALUES ($1, $2, $3, $4, $5) RETURNING id, name, phone, email, address, created_at',
+        [
+          organizationId,
+          input.name,
+          input.phone || null,
+          input.email || null,
+          input.address || null,
+        ]
+      );
 
-    const customer = customerResult.rows[0] as Customer;
+      const customer = customerResult.rows[0] as Customer;
 
-    // Audit log
-    await client.query(
-      'INSERT INTO audit_events (actor, action, payload) VALUES ($1, $2, $3)',
-      [
-        user.email,
-        'customer.create',
-        JSON.stringify({ customer_id: customer.id }),
-      ]
-    );
+      // Audit log
+      await client.query(
+        'INSERT INTO audit_events (actor, action, payload) VALUES ($1, $2, $3)',
+        [user.email, 'customer.create', JSON.stringify({ customer_id: customer.id })]
+      );
 
-    await client.query('COMMIT');
-    return customer;
-  } catch (error) {
-    await client.query('ROLLBACK');
-    throw error;
-  } finally {
-    client.release();
-  }
+      await client.query('COMMIT');
+      return customer;
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    }
+  });
 }
 
 export async function getCustomerById(id: string): Promise<Customer | null> {

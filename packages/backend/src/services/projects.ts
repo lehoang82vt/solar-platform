@@ -1,4 +1,4 @@
-import { getDatabasePool } from '../config/database';
+import { getDatabasePool, withOrgContext } from '../config/database';
 import { UserPayload } from './auth';
 
 export interface ProjectInput {
@@ -15,43 +15,39 @@ export interface Project {
 
 export async function createProject(
   input: ProjectInput,
-  user: UserPayload
+  user: UserPayload,
+  organizationId: string
 ): Promise<Project> {
   const pool = getDatabasePool();
   if (!pool) {
     throw new Error('Database pool not initialized');
   }
 
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
+  return await withOrgContext(organizationId, async (client) => {
+    try {
+      await client.query('BEGIN');
 
-    // Insert project
-    const projectResult = await client.query(
-      'INSERT INTO projects (customer_name, address) VALUES ($1, $2) RETURNING id, customer_name, address, created_at',
-      [input.customer_name, input.address || null]
-    );
+      // Insert project
+      const projectResult = await client.query(
+        'INSERT INTO projects (organization_id, customer_name, address) VALUES ($1, $2, $3) RETURNING id, customer_name, address, created_at',
+        [organizationId, input.customer_name, input.address || null]
+      );
 
-    const project = projectResult.rows[0] as Project;
+      const project = projectResult.rows[0] as Project;
 
-    // Audit log
-    await client.query(
-      'INSERT INTO audit_events (actor, action, payload) VALUES ($1, $2, $3)',
-      [
-        user.email,
-        'project.create',
-        JSON.stringify({ project_id: project.id }),
-      ]
-    );
+      // Audit log
+      await client.query(
+        'INSERT INTO audit_events (actor, action, payload) VALUES ($1, $2, $3)',
+        [user.email, 'project.create', JSON.stringify({ project_id: project.id })]
+      );
 
-    await client.query('COMMIT');
-    return project;
-  } catch (error) {
-    await client.query('ROLLBACK');
-    throw error;
-  } finally {
-    client.release();
-  }
+      await client.query('COMMIT');
+      return project;
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    }
+  });
 }
 
 export async function getProjectById(id: string): Promise<Project | null> {

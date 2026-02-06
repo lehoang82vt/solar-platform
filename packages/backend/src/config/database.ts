@@ -1,8 +1,30 @@
-import { Pool } from 'pg';
+import { Pool, PoolClient } from 'pg';
 import { config } from './env';
 
 let pool: Pool | null = null;
 let isConnected = false;
+
+export async function withOrgContext<T>(
+  organizationId: string,
+  fn: (client: PoolClient) => Promise<T>
+): Promise<T> {
+  if (!organizationId) {
+    throw new Error('organizationId is required');
+  }
+  if (!pool) {
+    throw new Error('Database pool not initialized');
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query(`SELECT set_config('app.current_org_id', $1, true)`, [
+      organizationId,
+    ]);
+    return await fn(client);
+  } finally {
+    client.release();
+  }
+}
 
 export async function connectDatabase(): Promise<void> {
   try {

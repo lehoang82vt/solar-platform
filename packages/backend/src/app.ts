@@ -15,7 +15,7 @@ import {
 } from './services/customers';
 import {
   createQuoteDraft,
-  getQuoteById,
+  getQuoteDetailById,
   listQuotes,
   updateQuotePayload,
   updateQuoteStatus,
@@ -80,10 +80,8 @@ app.post('/api/projects', requireAuth, async (req: Request, res: Response) => {
       return;
     }
 
-    const project = await createProject(
-      { customer_name, address },
-      req.user!
-    );
+    const organizationId = await getDefaultOrganizationId();
+    const project = await createProject({ customer_name, address }, req.user!, organizationId);
     res.status(201).json(project);
   } catch (error) {
     console.error('Create project error:', error);
@@ -128,10 +126,8 @@ app.post('/api/customers', requireAuth, async (req: Request, res: Response) => {
       return;
     }
 
-    const customer = await createCustomer(
-      { name, phone, email, address },
-      req.user!
-    );
+    const organizationId = await getDefaultOrganizationId();
+    const customer = await createCustomer({ name, phone, email, address }, req.user!, organizationId);
     res.status(201).json(customer);
   } catch (error) {
     console.error('Create customer error:', error);
@@ -176,10 +172,8 @@ app.post('/api/quotes', requireAuth, async (req: Request, res: Response) => {
       return;
     }
 
-    const quote = await createQuoteDraft(
-      { customer_id, payload },
-      req.user!
-    );
+    const organizationId = await getDefaultOrganizationId();
+    const quote = await createQuoteDraft({ customer_id, payload }, req.user!, organizationId);
     res.status(201).json(quote);
   } catch (error) {
     console.error('Create quote error:', error);
@@ -190,14 +184,25 @@ app.post('/api/quotes', requireAuth, async (req: Request, res: Response) => {
 app.get('/api/quotes/:id', requireAuth, async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const quote = await getQuoteById(id);
+    const organizationId = await getDefaultOrganizationId();
+    const quote = await getQuoteDetailById(organizationId, id);
+
+    const result = quote ? 'found' : 'not_found';
+    await auditLogWrite({
+      organization_id: organizationId,
+      actor: req.user!.email,
+      action: 'quote.get',
+      entity_type: 'quote',
+      entity_id: quote ? quote.id : undefined,
+      metadata: { quote_id: id, result },
+    });
 
     if (!quote) {
-      res.status(404).json({ error: 'Not found' });
+      res.status(404).json({ error: 'Quote not found' });
       return;
     }
 
-    res.json(quote);
+    res.json({ value: quote });
   } catch (error) {
     console.error('Get quote error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -215,11 +220,11 @@ app.get('/api/quotes', requireAuth, async (req: Request, res: Response) => {
       }
     }
 
+    const organizationId = await getDefaultOrganizationId();
     // Call listQuotes service which returns { value, count }
-    const result = await listQuotes(limit);
+    const result = await listQuotes(organizationId, limit);
 
     // Log audit event to audit_logs (F-05 foundation)
-    const organizationId = await getDefaultOrganizationId();
     await auditLogWrite({
       organization_id: organizationId,
       actor: req.user!.email,
@@ -245,8 +250,9 @@ app.patch('/api/quotes/:id/payload', requireAuth, async (req: Request, res: Resp
       return;
     }
 
-    const quote = await updateQuotePayload(id, payload, req.user!);
-    res.json(quote);
+    const organizationId = await getDefaultOrganizationId();
+    const quote = await updateQuotePayload(id, payload, req.user!, organizationId);
+    res.json({ value: quote });
   } catch (error) {
     console.error('Update quote payload error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -263,8 +269,9 @@ app.patch('/api/quotes/:id/status', requireAuth, async (req: Request, res: Respo
       return;
     }
 
-    const quote = await updateQuoteStatus(id, status, req.user!);
-    res.json(quote);
+    const organizationId = await getDefaultOrganizationId();
+    const quote = await updateQuoteStatus(id, status, req.user!, organizationId);
+    res.json({ value: quote });
   } catch (error: unknown) {
     const err = error as Error;
     if (err.message.includes('Cannot transition') || err.message.includes('Invalid status')) {

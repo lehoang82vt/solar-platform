@@ -33,7 +33,7 @@ test('test_f02_4: rls_allows_with_correct_org_context', () => {
   assert.ok(orgId.length > 0);
 
   const out = sh(
-    `docker compose exec -T postgres psql -U app_user -d solar -c \"reset all; set app.current_org_id='${orgId}'; select count(*) from audit_logs;\" 2>&1`
+    `docker compose exec -T postgres psql -U app_user -d solar -c "reset all; set app.current_org_id='${orgId}'; select count(*) from audit_logs;" 2>&1`
   );
 
   // Seed ensures exactly 1 row exists in audit_logs
