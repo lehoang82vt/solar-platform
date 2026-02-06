@@ -187,20 +187,26 @@ app.get('/api/quotes/:id', requireAuth, async (req: Request, res: Response) => {
     const organizationId = await getDefaultOrganizationId();
     const quote = await getQuoteDetailById(organizationId, id);
 
-    const result = quote ? 'found' : 'not_found';
+    if (!quote) {
+      await auditLogWrite({
+        organization_id: organizationId,
+        actor: req.user!.email,
+        action: 'quote.get.not_found',
+        entity_type: 'quote',
+        metadata: { quote_id: id },
+      });
+      res.status(404).json({ error: 'Quote not found' });
+      return;
+    }
+
     await auditLogWrite({
       organization_id: organizationId,
       actor: req.user!.email,
       action: 'quote.get',
       entity_type: 'quote',
-      entity_id: quote ? quote.id : undefined,
-      metadata: { quote_id: id, result },
+      entity_id: quote.id,
+      metadata: { quote_id: id },
     });
-
-    if (!quote) {
-      res.status(404).json({ error: 'Quote not found' });
-      return;
-    }
 
     res.json({ value: quote });
   } catch (error) {
