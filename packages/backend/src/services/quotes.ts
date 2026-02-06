@@ -193,7 +193,8 @@ export async function getQuoteById(id: string): Promise<Quote | null> {
 
 export async function listQuotes(
   organizationId: string,
-  limit: number = 50
+  limit: number = 20,
+  offset: number = 0
 ): Promise<{ value: Quote[]; count: number }> {
   return await withOrgContext(organizationId, async (client) => {
     const result = await client.query(
@@ -202,13 +203,13 @@ export async function listQuotes(
          quotes.customer_id, 
          customers.name as customer_name,
          quotes.status, 
-         quotes.payload, 
          quotes.created_at 
        FROM quotes 
        JOIN customers ON quotes.customer_id = customers.id 
        ORDER BY quotes.created_at DESC 
-       LIMIT $1`,
-      [limit]
+       LIMIT $1
+       OFFSET $2`,
+      [limit, offset]
     );
 
     const countResult = await client.query('SELECT COUNT(*) FROM quotes');
@@ -219,7 +220,6 @@ export async function listQuotes(
       customer_id: row.customer_id,
       customer_name: row.customer_name,
       status: row.status,
-      payload: typeof row.payload === 'string' ? JSON.parse(row.payload) : row.payload,
       created_at: row.created_at,
     })) as Quote[];
 

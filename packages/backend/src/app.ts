@@ -218,17 +218,26 @@ app.get('/api/quotes/:id', requireAuth, async (req: Request, res: Response) => {
 app.get('/api/quotes', requireAuth, async (req: Request, res: Response) => {
   try {
     // Extract and validate limit from query params
-    let limit = 50;
+    let limit = 20;
     if (req.query.limit) {
       const parsedLimit = parseInt(req.query.limit as string, 10);
-      if (!isNaN(parsedLimit) && parsedLimit > 0) {
-        limit = Math.min(parsedLimit, 100); // Cap at 100
+      if (!isNaN(parsedLimit)) {
+        limit = Math.max(1, Math.min(parsedLimit, 100)); // Clamp 1..100
+      }
+    }
+
+    // Extract and validate offset from query params
+    let offset = 0;
+    if (req.query.offset) {
+      const parsedOffset = parseInt(req.query.offset as string, 10);
+      if (!isNaN(parsedOffset)) {
+        offset = Math.max(0, parsedOffset);
       }
     }
 
     const organizationId = await getDefaultOrganizationId();
     // Call listQuotes service which returns { value, count }
-    const result = await listQuotes(organizationId, limit);
+    const result = await listQuotes(organizationId, limit, offset);
 
     // Log audit event to audit_logs (F-05 foundation)
     await auditLogWrite({
@@ -236,7 +245,7 @@ app.get('/api/quotes', requireAuth, async (req: Request, res: Response) => {
       actor: req.user!.email,
       action: 'quote.list',
       entity_type: 'quote',
-      metadata: { limit },
+      metadata: { limit, offset, result_count: result.value.length },
     });
 
     res.json(result);
