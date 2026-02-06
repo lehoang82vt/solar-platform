@@ -77,6 +77,25 @@ export async function getCustomerById(id: string): Promise<Customer | null> {
   return result.rows[0] as Customer;
 }
 
+/**
+ * Get customer by id (org-safe). Returns null if not found in org.
+ */
+export async function getCustomerByIdOrgSafe(
+  id: string,
+  organizationId: string
+): Promise<Customer | null> {
+  return await withOrgContext(organizationId, async (client) => {
+    const result = await client.query(
+      'SELECT id, name, phone, email, address, created_at FROM customers WHERE id = $1',
+      [id]
+    );
+    if (result.rows.length === 0) {
+      return null;
+    }
+    return result.rows[0] as Customer;
+  });
+}
+
 export async function listCustomers(limit: number = 50): Promise<Customer[]> {
   const pool = getDatabasePool();
   if (!pool) {

@@ -11,7 +11,7 @@ import {
 import {
   createCustomer,
   deleteCustomer,
-  getCustomerById,
+  getCustomerByIdOrgSafe,
   isValidCustomerId,
   listCustomers,
   updateCustomer,
@@ -143,14 +143,35 @@ app.post('/api/customers', requireAuth, async (req: Request, res: Response) => {
 app.get('/api/customers/:id', requireAuth, async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const customer = await getCustomerById(id);
+    if (!isValidCustomerId(id)) {
+      res.status(400).json({ error: 'invalid id' });
+      return;
+    }
+    const organizationId = await getDefaultOrganizationId();
+    const customer = await getCustomerByIdOrgSafe(id, organizationId);
 
     if (!customer) {
-      res.status(404).json({ error: 'Not found' });
+      await auditLogWrite({
+        organization_id: organizationId,
+        actor: req.user!.email,
+        action: 'customer.get.not_found',
+        entity_type: 'customer',
+        metadata: { customer_id: id },
+      });
+      res.status(404).json({ error: 'Customer not found' });
       return;
     }
 
-    res.json(customer);
+    await auditLogWrite({
+      organization_id: organizationId,
+      actor: req.user!.email,
+      action: 'customer.get',
+      entity_type: 'customer',
+      entity_id: customer.id,
+      metadata: { customer_id: id },
+    });
+
+    res.json({ value: customer });
   } catch (error) {
     console.error('Get customer error:', error);
     res.status(500).json({ error: 'Internal server error' });
