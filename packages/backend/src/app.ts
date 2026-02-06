@@ -258,16 +258,55 @@ app.get('/api/quotes', requireAuth, async (req: Request, res: Response) => {
 app.patch('/api/quotes/:id/payload', requireAuth, async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const payload = req.body;
+    const body = req.body as { payload?: unknown };
+    const payload = body?.payload;
 
-    if (!payload) {
-      res.status(400).json({ error: 'payload required' });
+    // Validate payload: must be a plain object (not null/array/string)
+    if (
+      payload === null ||
+      payload === undefined ||
+      typeof payload !== 'object' ||
+      Array.isArray(payload)
+    ) {
+      res.status(400).json({ error: 'payload must be an object' });
       return;
     }
 
     const organizationId = await getDefaultOrganizationId();
-    const quote = await updateQuotePayload(id, payload, req.user!, organizationId);
-    res.json({ value: quote });
+    try {
+      const quote = await updateQuotePayload(
+        id,
+        payload as Record<string, unknown>,
+        req.user!,
+        organizationId
+      );
+
+      const keysCount = Object.keys(payload as Record<string, unknown>).length;
+      await auditLogWrite({
+        organization_id: organizationId,
+        actor: req.user!.email,
+        action: 'quote.payload.update',
+        entity_type: 'quote',
+        entity_id: quote.id,
+        metadata: { quote_id: id, keys_count: keysCount },
+      });
+
+      res.json({ value: quote });
+    } catch (error: unknown) {
+      const err = error as Error;
+      if (err.message.includes('Quote not found')) {
+        await auditLogWrite({
+          organization_id: organizationId,
+          actor: req.user!.email,
+          action: 'quote.payload.update.not_found',
+          entity_type: 'quote',
+          metadata: { quote_id: id },
+        });
+        res.status(404).json({ error: 'Quote not found' });
+        return;
+      }
+      throw error;
+    }
   } catch (error) {
     console.error('Update quote payload error:', error);
     res.status(500).json({ error: 'Internal server error' });
