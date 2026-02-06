@@ -1,5 +1,5 @@
 import express, { Express, Request, Response } from 'express';
-import { isDatabaseConnected, getDatabasePool } from './config/database';
+import { isDatabaseConnected } from './config/database';
 import { version } from '../../shared/src';
 import { authenticateUser, generateToken } from './services/auth';
 import { requireAuth } from './middleware/auth';
@@ -20,6 +20,7 @@ import {
   updateQuotePayload,
   updateQuoteStatus,
 } from './services/quotes';
+import { write as auditLogWrite, getDefaultOrganizationId } from './services/auditLog';
 
 const app: Express = express();
 
@@ -217,18 +218,15 @@ app.get('/api/quotes', requireAuth, async (req: Request, res: Response) => {
     // Call listQuotes service which returns { value, count }
     const result = await listQuotes(limit);
 
-    // Log audit event
-    const pool = getDatabasePool();
-    if (pool) {
-      await pool.query(
-        'INSERT INTO audit_events (actor, action, payload) VALUES ($1, $2, $3)',
-        [
-          req.user!.email,
-          'quote.list',
-          JSON.stringify({ limit }),
-        ]
-      );
-    }
+    // Log audit event to audit_logs (F-05 foundation)
+    const organizationId = await getDefaultOrganizationId();
+    await auditLogWrite({
+      organization_id: organizationId,
+      actor: req.user!.email,
+      action: 'quote.list',
+      entity_type: 'quote',
+      metadata: { limit },
+    });
 
     res.json(result);
   } catch (error) {
