@@ -97,6 +97,48 @@ export function isValidCustomerId(id: string): boolean {
   return typeof id === 'string' && UUID_REGEX.test(id);
 }
 
+const CUSTOMER_PATCH_WHITELIST = ['name', 'phone', 'email', 'address'] as const;
+
+export type CustomerPatch = Partial<Pick<CustomerInput, (typeof CUSTOMER_PATCH_WHITELIST)[number]>>;
+
+export async function updateCustomer(
+  id: string,
+  organizationId: string,
+  patch: CustomerPatch
+): Promise<{ id: string; changedFields: string[] } | null> {
+  return await withOrgContext(organizationId, async (client) => {
+    const existResult = await client.query('SELECT id FROM customers WHERE id = $1', [id]);
+    if (existResult.rows.length === 0) {
+      return null;
+    }
+
+    const allowed = Object.keys(patch).filter((k) =>
+      CUSTOMER_PATCH_WHITELIST.includes(k as (typeof CUSTOMER_PATCH_WHITELIST)[number])
+    ) as (typeof CUSTOMER_PATCH_WHITELIST)[number][];
+    if (allowed.length === 0) {
+      return { id, changedFields: [] };
+    }
+
+    const setParts: string[] = [];
+    const values: (string | null)[] = [];
+    let idx = 1;
+    for (const key of allowed) {
+      setParts.push(`${key} = $${idx}`);
+      const v = (patch as Record<string, unknown>)[key];
+      values.push(v === undefined ? null : v === null ? null : String(v));
+      idx += 1;
+    }
+    values.push(id);
+
+    await client.query(
+      `UPDATE customers SET ${setParts.join(', ')} WHERE id = $${idx} RETURNING id`,
+      values
+    );
+
+    return { id, changedFields: [...allowed] };
+  });
+}
+
 export async function deleteCustomer(
   id: string,
   organizationId: string

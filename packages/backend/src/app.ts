@@ -14,6 +14,7 @@ import {
   getCustomerById,
   isValidCustomerId,
   listCustomers,
+  updateCustomer,
 } from './services/customers';
 import {
   createQuoteDraft,
@@ -152,6 +153,45 @@ app.get('/api/customers/:id', requireAuth, async (req: Request, res: Response) =
     res.json(customer);
   } catch (error) {
     console.error('Get customer error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.patch('/api/customers/:id', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    if (!isValidCustomerId(id)) {
+      res.status(400).json({ error: 'invalid id' });
+      return;
+    }
+    const organizationId = await getDefaultOrganizationId();
+    const patch = req.body as Record<string, unknown>;
+    const result = await updateCustomer(id, organizationId, patch);
+
+    if (!result) {
+      await auditLogWrite({
+        organization_id: organizationId,
+        actor: req.user!.email,
+        action: 'customer.update.not_found',
+        entity_type: 'customer',
+        metadata: { customer_id: id },
+      });
+      res.status(404).json({ error: 'Customer not found' });
+      return;
+    }
+
+    await auditLogWrite({
+      organization_id: organizationId,
+      actor: req.user!.email,
+      action: 'customer.update',
+      entity_type: 'customer',
+      entity_id: result.id,
+      metadata: { customer_id: id, changed_fields: result.changedFields },
+    });
+
+    res.status(200).json({ value: { id: result.id } });
+  } catch (error) {
+    console.error('Update customer error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
