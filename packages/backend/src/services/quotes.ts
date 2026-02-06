@@ -17,6 +17,12 @@ export interface Quote {
   created_at: string;
 }
 
+export interface QuoteWithCustomer extends Quote {
+  customer_name: string;
+  customer_phone?: string;
+  customer_email?: string;
+}
+
 export async function createQuoteDraft(
   input: { customer_id: string; payload?: Record<string, unknown> },
   user: UserPayload,
@@ -295,5 +301,54 @@ export async function getQuoteDetailById(
       payload: typeof row.payload === 'string' ? JSON.parse(row.payload) : row.payload,
       created_at: row.created_at,
     } as Quote;
+  });
+}
+
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export function isValidQuoteId(id: string): boolean {
+  return typeof id === 'string' && UUID_REGEX.test(id);
+}
+
+/**
+ * Get quote by id with customer join (org-safe). Returns null if not found.
+ */
+export async function getQuoteWithCustomer(
+  id: string,
+  organizationId: string
+): Promise<QuoteWithCustomer | null> {
+  return await withOrgContext(organizationId, async (client) => {
+    const result = await client.query(
+      `SELECT 
+         q.id,
+         q.customer_id,
+         q.status,
+         q.payload,
+         q.created_at,
+         c.name as customer_name,
+         c.phone as customer_phone,
+         c.email as customer_email
+       FROM quotes q
+       JOIN customers c ON q.customer_id = c.id
+       WHERE q.id = $1
+       LIMIT 1`,
+      [id]
+    );
+
+    if (result.rows.length === 0) {
+      return null;
+    }
+
+    const row = result.rows[0];
+    return {
+      id: row.id,
+      customer_id: row.customer_id,
+      status: row.status,
+      payload: typeof row.payload === 'string' ? JSON.parse(row.payload) : row.payload,
+      created_at: row.created_at,
+      customer_name: row.customer_name ?? '',
+      customer_phone: row.customer_phone ?? undefined,
+      customer_email: row.customer_email ?? undefined,
+    } as QuoteWithCustomer;
   });
 }

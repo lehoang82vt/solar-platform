@@ -15,7 +15,8 @@ import {
 } from './services/customers';
 import {
   createQuoteDraft,
-  getQuoteDetailById,
+  getQuoteWithCustomer,
+  isValidQuoteId,
   listQuotes,
   updateQuotePayload,
   updateQuoteStatus,
@@ -184,8 +185,12 @@ app.post('/api/quotes', requireAuth, async (req: Request, res: Response) => {
 app.get('/api/quotes/:id', requireAuth, async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
+    if (!isValidQuoteId(id)) {
+      res.status(400).json({ error: 'invalid id' });
+      return;
+    }
     const organizationId = await getDefaultOrganizationId();
-    const quote = await getQuoteDetailById(organizationId, id);
+    const quote = await getQuoteWithCustomer(id, organizationId);
 
     if (!quote) {
       await auditLogWrite({
@@ -205,7 +210,7 @@ app.get('/api/quotes/:id', requireAuth, async (req: Request, res: Response) => {
       action: 'quote.get',
       entity_type: 'quote',
       entity_id: quote.id,
-      metadata: { quote_id: id },
+      metadata: { quote_id: quote.id, customer_id: quote.customer_id, status: quote.status },
     });
 
     res.json({ value: quote });
