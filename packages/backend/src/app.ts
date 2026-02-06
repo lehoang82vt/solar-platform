@@ -8,6 +8,8 @@ import {
   getProjectByIdOrgSafe,
   isValidProjectId,
   listProjects,
+  updateProject,
+  type ProjectPatch,
 } from './services/projects';
 import {
   createCustomer,
@@ -166,6 +168,61 @@ app.get('/api/projects/:id', requireAuth, async (req: Request, res: Response) =>
     res.json({ value: project });
   } catch (error) {
     console.error('Get project error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.patch('/api/projects/:id', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    if (!isValidProjectId(id)) {
+      res.status(400).json({ error: 'invalid id' });
+      return;
+    }
+    const patch = req.body as Record<string, unknown>;
+    if (patch && typeof patch === 'object') {
+      if ('name' in patch) {
+        const name = patch.name;
+        if (typeof name !== 'string' || name.trim() === '') {
+          res.status(400).json({ error: 'invalid payload' });
+          return;
+        }
+      }
+      if ('address' in patch) {
+        const address = patch.address;
+        if (address !== null && typeof address !== 'string') {
+          res.status(400).json({ error: 'invalid payload' });
+          return;
+        }
+      }
+    }
+    const organizationId = await getDefaultOrganizationId();
+    const result = await updateProject(organizationId, id, patch as ProjectPatch);
+
+    if (!result) {
+      await auditLogWrite({
+        organization_id: organizationId,
+        actor: req.user!.email,
+        action: 'project.update.not_found',
+        entity_type: 'project',
+        metadata: { project_id: id },
+      });
+      res.status(404).json({ error: 'Project not found' });
+      return;
+    }
+
+    await auditLogWrite({
+      organization_id: organizationId,
+      actor: req.user!.email,
+      action: 'project.update',
+      entity_type: 'project',
+      entity_id: result.id,
+      metadata: { project_id: id, changed_fields: result.changedFields },
+    });
+
+    res.status(200).json({ value: { id: result.id } });
+  } catch (error) {
+    console.error('Update project error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

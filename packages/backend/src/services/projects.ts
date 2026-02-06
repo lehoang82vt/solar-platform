@@ -82,6 +82,58 @@ export function isValidProjectId(id: string): boolean {
   return typeof id === 'string' && UUID_REGEX.test(id);
 }
 
+const PROJECT_PATCH_WHITELIST = ['name', 'address'] as const;
+
+/** Patch payload for PATCH /api/projects/:id (F-22). name maps to customer_name in DB. */
+export type ProjectPatch = Partial<{
+  name: string;
+  address: string | null;
+}>;
+
+/** Update project by id (org-safe). Returns { id, changedFields } or null if not found. */
+export async function updateProject(
+  organizationId: string,
+  id: string,
+  patch: ProjectPatch
+): Promise<{ id: string; changedFields: string[] } | null> {
+  return await withOrgContext(organizationId, async (client) => {
+    const existResult = await client.query('SELECT id FROM projects WHERE id = $1', [id]);
+    if (existResult.rows.length === 0) {
+      return null;
+    }
+
+    const allowed = Object.keys(patch).filter((k) =>
+      PROJECT_PATCH_WHITELIST.includes(k as (typeof PROJECT_PATCH_WHITELIST)[number])
+    ) as (typeof PROJECT_PATCH_WHITELIST)[number][];
+    if (allowed.length === 0) {
+      return { id, changedFields: [] };
+    }
+
+    const setParts: string[] = [];
+    const values: (string | null)[] = [];
+    let idx = 1;
+    for (const key of allowed) {
+      const v = (patch as Record<string, unknown>)[key];
+      const dbValue = v === undefined ? null : v === null ? null : String(v);
+      if (key === 'name') {
+        setParts.push(`customer_name = $${idx}`);
+      } else {
+        setParts.push(`${key} = $${idx}`);
+      }
+      values.push(dbValue);
+      idx += 1;
+    }
+    values.push(id);
+
+    await client.query(
+      `UPDATE projects SET ${setParts.join(', ')} WHERE id = $${idx} RETURNING id`,
+      values
+    );
+
+    return { id, changedFields: [...allowed] };
+  });
+}
+
 /** Get project by id (org-safe). Returns null if not found in org. */
 export async function getProjectByIdOrgSafe(
   id: string,
