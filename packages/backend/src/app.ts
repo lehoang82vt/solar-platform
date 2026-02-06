@@ -1,5 +1,5 @@
 import express, { Express, Request, Response } from 'express';
-import { isDatabaseConnected, getDatabasePool } from './config/database';
+import { isDatabaseConnected } from './config/database';
 import { version } from '../../shared/src';
 import { authenticateUser, generateToken } from './services/auth';
 import { requireAuth } from './middleware/auth';
@@ -20,6 +20,7 @@ import {
   updateQuotePayload,
   updateQuoteStatus,
 } from './services/quotes';
+import { writeAuditLog } from './services/audit';
 
 const app: Express = express();
 
@@ -113,6 +114,40 @@ app.get('/api/projects', requireAuth, async (_: Request, res: Response) => {
     res.json(projects);
   } catch (error) {
     console.error('List projects error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Project quotes endpoint (canonical endpoint with project scope)
+app.get('/api/projects/:projectId/quotes', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const { projectId } = req.params;
+
+    // Verify project exists
+    const project = await getProjectById(projectId);
+    if (!project) {
+      res.status(404).json({ error: 'Project not found' });
+      return;
+    }
+
+    // Extract and validate limit from query params
+    let limit = 50;
+    if (req.query.limit) {
+      const parsedLimit = parseInt(req.query.limit as string, 10);
+      if (!isNaN(parsedLimit) && parsedLimit > 0) {
+        limit = Math.min(parsedLimit, 100); // Cap at 100
+      }
+    }
+
+    // Call listQuotes service which returns { value, count }
+    const result = await listQuotes(limit);
+
+    // Log audit event using audit module
+    await writeAuditLog(req.user!.email, 'quote.list', { limit, project_id: projectId });
+
+    res.json(result);
+  } catch (error) {
+    console.error('List project quotes error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -217,18 +252,8 @@ app.get('/api/quotes', requireAuth, async (req: Request, res: Response) => {
     // Call listQuotes service which returns { value, count }
     const result = await listQuotes(limit);
 
-    // Log audit event
-    const pool = getDatabasePool();
-    if (pool) {
-      await pool.query(
-        'INSERT INTO audit_events (actor, action, payload) VALUES ($1, $2, $3)',
-        [
-          req.user!.email,
-          'quote.list',
-          JSON.stringify({ limit }),
-        ]
-      );
-    }
+    // Log audit event using audit module
+    await writeAuditLog(req.user!.email, 'quote.list', { limit });
 
     res.json(result);
   } catch (error) {
