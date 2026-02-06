@@ -1,4 +1,5 @@
 import { getDatabasePool, withOrgContext } from '../config/database';
+import { getProjectByIdOrgSafe } from './projects';
 import { UserPayload } from './auth';
 
 export interface QuotePayload {
@@ -308,6 +309,82 @@ const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12
 
 export function isValidQuoteId(id: string): boolean {
   return typeof id === 'string' && UUID_REGEX.test(id);
+}
+
+/** Payload for POST /api/quotes v1 (F-25): create quote from project. */
+export interface CreateQuoteFromProjectPayload {
+  project_id: string;
+  title?: string;
+}
+
+/** Result shape for 201 response (F-25). */
+export interface CreateQuoteFromProjectResult {
+  id: string;
+  project_id: string;
+  customer_name: string;
+  status: string;
+  created_at: string;
+}
+
+export type CreateQuoteFromProjectOutcome =
+  | { kind: 'project_not_found' }
+  | { kind: 'customer_not_found' }
+  | { kind: 'ok'; quote: CreateQuoteFromProjectResult };
+
+/**
+ * Create quote from project (org-safe). Resolves project, snapshots customer_name,
+ * finds customer by name in org for FK, inserts quote with payload containing project_id.
+ */
+export async function createQuoteFromProject(
+  organizationId: string,
+  payload: CreateQuoteFromProjectPayload
+): Promise<CreateQuoteFromProjectOutcome> {
+  const project = await getProjectByIdOrgSafe(payload.project_id, organizationId);
+  if (!project) {
+    return { kind: 'project_not_found' };
+  }
+
+  const customer_name = project.name;
+
+  return await withOrgContext(organizationId, async (client) => {
+    const custResult = await client.query(
+      'SELECT id FROM customers WHERE name = $1 LIMIT 1',
+      [customer_name]
+    );
+    if (custResult.rows.length === 0) {
+      return { kind: 'customer_not_found' };
+    }
+    const customer_id = (custResult.rows[0] as { id: string }).id;
+
+    const quotePayload = {
+      project_id: payload.project_id,
+      customer_name_snapshot: customer_name,
+      ...(payload.title !== undefined && { title: payload.title }),
+    };
+
+    const quoteResult = await client.query(
+      `INSERT INTO quotes (organization_id, customer_id, status, payload)
+       VALUES ($1, $2, $3, $4)
+       RETURNING id, created_at`,
+      [
+        organizationId,
+        customer_id,
+        'draft',
+        JSON.stringify(quotePayload),
+      ]
+    );
+    const row = quoteResult.rows[0] as { id: string; created_at: string };
+    return {
+      kind: 'ok',
+      quote: {
+        id: row.id,
+        project_id: payload.project_id,
+        customer_name,
+        status: 'draft',
+        created_at: row.created_at,
+      },
+    };
+  });
 }
 
 /**

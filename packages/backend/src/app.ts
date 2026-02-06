@@ -22,6 +22,7 @@ import {
 } from './services/customers';
 import {
   createQuoteDraft,
+  createQuoteFromProject,
   deleteQuote,
   getQuoteWithCustomer,
   isValidQuoteId,
@@ -453,15 +454,64 @@ app.delete('/api/customers/:id', requireAuth, async (req: Request, res: Response
 // Quotes endpoints
 app.post('/api/quotes', requireAuth, async (req: Request, res: Response) => {
   try {
-    const { customer_id, payload } = req.body;
+    const body = req.body as Record<string, unknown> | undefined;
+    const organizationId = await getDefaultOrganizationId();
 
+    // F-25: create quote v1 from project_id
+    if (body && body.project_id !== undefined) {
+      const project_id = body.project_id;
+      const title = body.title;
+      if (typeof project_id !== 'string' || !isValidProjectId(project_id)) {
+        res.status(400).json({ error: 'invalid payload' });
+        return;
+      }
+      if (title !== undefined && typeof title !== 'string') {
+        res.status(400).json({ error: 'invalid payload' });
+        return;
+      }
+
+      const result = await createQuoteFromProject(organizationId, { project_id, title });
+
+      if (result.kind === 'project_not_found') {
+        await auditLogWrite({
+          organization_id: organizationId,
+          actor: req.user!.email,
+          action: 'quote.create.project_not_found',
+          entity_type: 'quote',
+          metadata: { project_id },
+        });
+        res.status(404).json({ error: 'Project not found' });
+        return;
+      }
+      if (result.kind === 'customer_not_found') {
+        res.status(404).json({ error: 'Customer not found' });
+        return;
+      }
+
+      await auditLogWrite({
+        organization_id: organizationId,
+        actor: req.user!.email,
+        action: 'quote.create',
+        entity_type: 'quote',
+        entity_id: result.quote.id,
+        metadata: { quote_id: result.quote.id, project_id: result.quote.project_id },
+      });
+      res.status(201).json({ value: result.quote });
+      return;
+    }
+
+    // Existing: create quote from customer_id
+    const { customer_id, payload } = body ?? {};
     if (!customer_id) {
       res.status(400).json({ error: 'customer_id required' });
       return;
     }
 
-    const organizationId = await getDefaultOrganizationId();
-    const quote = await createQuoteDraft({ customer_id, payload }, req.user!, organizationId);
+    const quote = await createQuoteDraft(
+      { customer_id: customer_id as string, payload: payload as Record<string, unknown> | undefined },
+      req.user!,
+      organizationId
+    );
     res.status(201).json(quote);
   } catch (error) {
     console.error('Create quote error:', error);
