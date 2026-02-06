@@ -12,7 +12,8 @@
     "lint": "eslint src",
     "typecheck": "tsc --noEmit",
     "test": "node --test",
-    "test:f02": "node --test src/__tests__/f02.test.ts"
+    "test:f02": "node --test src/__tests__/f02.test.ts",
+    "verify:f09_f16": "powershell -ExecutionPolicy Bypass -File scripts/verify-f09-f16.ps1"
   },
   "dependencies": {
     "@solar/shared": "*",
