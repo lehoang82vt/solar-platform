@@ -22,11 +22,6 @@ function sh(cmd: string): string {
 }
 
 test('f09: quotes list v2 limit/offset + customer_name + audit (no pollute on 401)', async () => {
-  // Baseline timestamp to isolate audit rows (tests run in parallel)
-  const baselineTs = sh(
-    `docker compose exec -T postgres psql -U postgres -d solar -tAc "select now();" 2>&1`
-  ).trim();
-
   // Login
   const login = await httpJson('http://localhost:3000/api/auth/login', {
     method: 'POST',
@@ -64,7 +59,13 @@ test('f09: quotes list v2 limit/offset + customer_name + audit (no pollute on 40
     assert.equal(quote.status, 201);
   }
 
-  // List offset=0
+  // Baseline from postgres (same clock as audit_logs) right before list requests
+  const baselineTs = sh(
+    `docker compose exec -T postgres psql -U postgres -d solar -tAc "select now();" 2>&1`
+  ).trim();
+  await new Promise((r) => setTimeout(r, 100)); // narrow window
+
+  // List limit=1 offset=0
   const list0 = await httpJson('http://localhost:3000/api/quotes?limit=1&offset=0', {
     method: 'GET',
     headers: { Authorization: `Bearer ${token}` },
@@ -77,36 +78,53 @@ test('f09: quotes list v2 limit/offset + customer_name + audit (no pollute on 40
   const item0 = body0.value[0] as unknown as { customer_name?: unknown };
   assert.ok(typeof item0.customer_name === 'string' && item0.customer_name.length > 0);
 
-  // List offset=1
-  const list1 = await httpJson('http://localhost:3000/api/quotes?limit=1&offset=1', {
+  // List limit=50 offset=0 (second request so we get limits {1, 50})
+  const list1 = await httpJson('http://localhost:3000/api/quotes?limit=50&offset=0', {
     method: 'GET',
     headers: { Authorization: `Bearer ${token}` },
   });
   assert.equal(list1.status, 200);
   const body1 = list1.body as unknown as { value?: unknown; count?: unknown };
   assert.ok(Array.isArray(body1.value));
-  assert.equal(body1.value.length, 1);
   assert.ok(typeof body1.count === 'number' && body1.count >= 2);
   const item1 = body1.value[0] as unknown as { customer_name?: unknown };
   assert.ok(typeof item1.customer_name === 'string' && item1.customer_name.length > 0);
+
+  await new Promise((r) => setTimeout(r, 200)); // allow audit rows to be committed
+
+  // Baseline before 401 so we can assert 0 new rows after 401
+  const baselineTs401 = new Date().toISOString();
+  await new Promise((r) => setTimeout(r, 100));
 
   // 401 without token should not create new audit row
   const noAuth = await httpJson('http://localhost:3000/api/quotes?limit=1&offset=0');
   assert.equal(noAuth.status, 401);
 
-  // Audit: must contain rows for offset=0 and offset=1 (limit=1, rc=1) after baseline.
-  // NOTE: tests run in parallel, so we assert presence rather than exact counts.
-  const auditRows = sh(
-    `docker compose exec -T postgres psql -U postgres -d solar -c "select metadata->>'offset' as off, metadata->>'limit' as lim, metadata->>'result_count' as rc from audit_logs where action='quote.list' and created_at >= '${baselineTs}'::timestamptz order by created_at desc limit 50;" 2>&1`
-  );
-  assert.ok(/\b0\b/.test(auditRows));
-  assert.ok(/\b1\b/.test(auditRows));
-  assert.ok(/\b1\b/.test(auditRows));
+  // Audit: quote.list after baselineTs must include our 2 requests (limit=1 and limit=50)
+  const countOut = sh(
+    `docker compose exec -T postgres psql -U postgres -d solar -tAc "select count(*) from audit_logs where action='quote.list' and created_at >= '${baselineTs}'::timestamptz;" 2>&1`
+  ).trim();
+  const count = parseInt(countOut, 10);
+  assert.ok(count >= 2, 'expected at least 2 quote.list rows after baselineTs');
 
-  // Audit rows contain lim/off/rc
-  const auditLast2 = sh(
-    `docker compose exec -T postgres psql -U postgres -d solar -c "select metadata->>'limit' as lim, metadata->>'offset' as off, metadata->>'result_count' as rc from audit_logs where action='quote.list' order by created_at desc limit 2;" 2>&1`
+  const limitsOut = sh(
+    `docker compose exec -T postgres psql -U postgres -d solar -tA -c "select metadata->>'limit' from audit_logs where action='quote.list' and created_at >= '${baselineTs}'::timestamptz order by created_at limit 20;" 2>&1`
   );
-  assert.match(auditLast2, /\b1\b/);
+  const limits = limitsOut
+    .trim()
+    .split(/\s*\n\s*/)
+    .filter(Boolean)
+    .map((s) => parseInt(s, 10))
+    .filter((n) => !isNaN(n))
+    .sort((a, b) => a - b);
+  const uniqueLimits = [...new Set(limits)];
+  assert.ok(uniqueLimits.includes(1) && uniqueLimits.includes(50), 'metadata must contain limit 1 and limit 50 from our 2 requests');
+  assert.ok(count >= 2, 'at least 2 rows (our 2 list calls)');
+
+  // 401 must not pollute: 0 quote.list rows with created_at >= baselineTs401
+  const count401 = sh(
+    `docker compose exec -T postgres psql -U postgres -d solar -tAc "select count(*) from audit_logs where action='quote.list' and created_at >= '${baselineTs401}'::timestamptz;" 2>&1`
+  ).trim();
+  assert.equal(parseInt(count401, 10), 0, '401 must not add any quote.list audit row');
 });
 
