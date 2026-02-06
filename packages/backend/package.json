@@ -11,7 +11,8 @@
     "migrate:rollback": "ts-node src/db/migrate.ts rollback",
     "lint": "eslint src",
     "typecheck": "tsc --noEmit",
-    "test": "jest"
+    "test": "node --test",
+    "test:f02": "node --test src/__tests__/f02.test.ts"
   },
   "dependencies": {
     "@solar/shared": "*",
