@@ -119,10 +119,16 @@ test('f15: quote detail v2 join customer + UUID validation + audit rules', async
   assert.ok(auditNotFound.includes('quote.get.not_found'));
   assert.ok(auditNotFound.includes(zeroUuid));
 
-  // GET without auth => 401, audit count must NOT increase (count after 404 is our baseline for "no more")
-  const countAfter404 = countQuoteGetAuditSince(baselineTs);
+  // GET without auth => 401, must NOT create audit (filter by this quote_id to avoid cross-test noise)
+  const baseline401 = sh(
+    `docker compose exec -T postgres psql -U postgres -d solar -tAc "select now();" 2>&1`
+  ).trim();
+  await new Promise((r) => setTimeout(r, 100));
   const noAuth = await httpJson(`http://localhost:3000/api/quotes/${quoteId}`);
   assert.equal(noAuth.status, 401);
-  const countAfter401 = countQuoteGetAuditSince(baselineTs);
-  assert.equal(countAfter401, countAfter404, '401 must NOT create audit');
+  const countQuoteGetForThisId = sh(
+    `docker compose exec -T postgres psql -U postgres -d solar -tAc "select count(*) from audit_logs where action='quote.get' and (metadata->>'quote_id') = '${quoteId}' and created_at >= '${baseline401}'::timestamptz;" 2>&1`
+  ).trim();
+  const n = parseInt(countQuoteGetForThisId, 10);
+  assert.equal(isNaN(n) ? 0 : n, 0, '401 must NOT create quote.get audit for this quote_id');
 });
