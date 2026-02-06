@@ -24,7 +24,7 @@ import {
   createQuoteDraft,
   createQuoteFromProject,
   deleteQuote,
-  getQuoteWithCustomer,
+  getQuoteDetailV3,
   isValidQuoteId,
   listQuotes,
   updateQuotePayload,
@@ -527,7 +527,7 @@ app.get('/api/quotes/:id', requireAuth, async (req: Request, res: Response) => {
       return;
     }
     const organizationId = await getDefaultOrganizationId();
-    const quote = await getQuoteWithCustomer(id, organizationId);
+    const quote = await getQuoteDetailV3(id, organizationId);
 
     if (!quote) {
       await auditLogWrite({
@@ -547,7 +547,7 @@ app.get('/api/quotes/:id', requireAuth, async (req: Request, res: Response) => {
       action: 'quote.get',
       entity_type: 'quote',
       entity_id: quote.id,
-      metadata: { quote_id: quote.id, customer_id: quote.customer_id, status: quote.status },
+      metadata: { quote_id: quote.id },
     });
 
     res.json({ value: quote });

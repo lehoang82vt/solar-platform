@@ -430,6 +430,50 @@ export async function getQuoteWithCustomer(
   });
 }
 
+/** Detail shape for GET /api/quotes/:id v3 (F-26). project_id and customer_name_snapshot from payload when present. */
+export interface QuoteDetailV3 {
+  id: string;
+  customer_id: string;
+  customer_name: string;
+  status: string;
+  created_at: string;
+  payload: QuotePayload;
+  project_id?: string;
+  customer_name_snapshot?: string;
+  customer_phone?: string;
+  customer_email?: string;
+}
+
+/**
+ * Get quote detail v3 (org-safe). Returns null if not found.
+ * Includes project_id and customer_name_snapshot from payload when present (F-25 path).
+ */
+export async function getQuoteDetailV3(
+  id: string,
+  organizationId: string
+): Promise<QuoteDetailV3 | null> {
+  const quote = await getQuoteWithCustomer(id, organizationId);
+  if (!quote) {
+    return null;
+  }
+  const payload = quote.payload as Record<string, unknown> | undefined;
+  const project_id = payload?.project_id != null ? String(payload.project_id) : undefined;
+  const customer_name_snapshot =
+    payload?.customer_name_snapshot != null ? String(payload.customer_name_snapshot) : undefined;
+  return {
+    id: quote.id,
+    customer_id: quote.customer_id,
+    customer_name: quote.customer_name,
+    status: quote.status,
+    created_at: quote.created_at,
+    payload: quote.payload,
+    ...(project_id !== undefined && { project_id }),
+    ...(customer_name_snapshot !== undefined && { customer_name_snapshot }),
+    ...(quote.customer_phone !== undefined && { customer_phone: quote.customer_phone }),
+    ...(quote.customer_email !== undefined && { customer_email: quote.customer_email }),
+  };
+}
+
 /**
  * Delete quote by id (org-safe). Returns deleted row data or null if not found.
  */
