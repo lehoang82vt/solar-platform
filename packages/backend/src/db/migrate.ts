@@ -6,6 +6,7 @@ import { config } from '../config/env';
 interface Migration {
   name: string;
   content: string;
+  downContent?: string;
 }
 
 async function readMigrations(): Promise<Migration[]> {
@@ -17,13 +18,22 @@ async function readMigrations(): Promise<Migration[]> {
   }
 
   const files = fs.readdirSync(migrationsDir)
-    .filter((file) => file.endsWith('.sql'))
+    .filter((file) => file.endsWith('.sql') && !file.includes('.down.'))
     .sort();
 
-  return files.map((file) => ({
-    name: file,
-    content: fs.readFileSync(path.join(migrationsDir, file), 'utf-8'),
-  }));
+  return files.map((file) => {
+    const downFile = file.replace('.sql', '.down.sql');
+    const downPath = path.join(migrationsDir, 'down', downFile);
+    const downContent = fs.existsSync(downPath) 
+      ? fs.readFileSync(downPath, 'utf-8') 
+      : undefined;
+    
+    return {
+      name: file,
+      content: fs.readFileSync(path.join(migrationsDir, file), 'utf-8'),
+      downContent,
+    };
+  });
 }
 
 async function initSchemaMigrations(pool: Pool): Promise<void> {
@@ -127,7 +137,89 @@ export async function runMigrations(): Promise<void> {
   }
 }
 
+export async function rollbackMigrations(): Promise<void> {
+  const pool = new Pool(config.database);
+
+  try {
+    console.log('Starting migration rollback...');
+    
+    // Initialize schema_migrations table if needed
+    await initSchemaMigrations(pool);
+
+    // Read all migrations
+    const migrations = await readMigrations();
+    
+    if (migrations.length === 0) {
+      console.log('No migrations found');
+      return;
+    }
+
+    // Get applied migrations in reverse order
+    const applied = await getAppliedMigrations(pool);
+    const appliedMigrations = Array.from(applied);
+    appliedMigrations.reverse();
+
+    if (appliedMigrations.length === 0) {
+      console.log('No migrations to rollback');
+      return;
+    }
+
+    console.log(`Found ${appliedMigrations.length} applied migration(s) to rollback`);
+
+    // Rollback each migration in reverse order
+    let rolledBackCount = 0;
+    for (const migrationName of appliedMigrations) {
+      const migration = migrations.find((m) => m.name === migrationName);
+      
+      if (!migration) {
+        console.warn(`⚠ Migration file not found: ${migrationName}`);
+        continue;
+      }
+
+      if (!migration.downContent) {
+        console.warn(`⚠ No down migration for: ${migrationName}, skipping rollback`);
+        continue;
+      }
+
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        await client.query(migration.downContent);
+        await client.query(
+          'DELETE FROM schema_migrations WHERE migration_name = $1',
+          [migrationName]
+        );
+        await client.query('COMMIT');
+        console.log(`✓ Rolled back: ${migrationName}`);
+        rolledBackCount++;
+      } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+      } finally {
+        client.release();
+      }
+    }
+
+    if (rolledBackCount === 0) {
+      console.log('No migrations were rolled back');
+    } else {
+      console.log(`\n✓ Successfully rolled back ${rolledBackCount} migration(s)`);
+    }
+  } catch (error) {
+    console.error('Rollback failed:', error);
+    process.exit(1);
+  } finally {
+    await pool.end();
+  }
+}
+
 // Run if called directly
 if (require.main === module) {
-  runMigrations();
+  const command = process.argv[2];
+  
+  if (command === 'rollback') {
+    rollbackMigrations();
+  } else {
+    runMigrations();
+  }
 }

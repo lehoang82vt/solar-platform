@@ -8,6 +8,7 @@
     "build": "tsc",
     "start": "node dist/server.js",
     "migrate": "ts-node src/db/migrate.ts",
+    "migrate:rollback": "ts-node src/db/migrate.ts rollback",
     "lint": "eslint src",
     "typecheck": "tsc --noEmit",
     "test": "jest"
