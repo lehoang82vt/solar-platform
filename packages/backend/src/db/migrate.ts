@@ -55,6 +55,17 @@ async function applyMigration(
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+    
+    // Set app settings for migrations that need environment variables
+    await client.query(
+      `SELECT set_config('app.admin_email', $1, false)`,
+      [process.env.ADMIN_EMAIL || 'admin@solar.local']
+    );
+    await client.query(
+      `SELECT set_config('app.admin_password', $1, false)`,
+      [process.env.ADMIN_PASSWORD || 'AdminPassword123']
+    );
+    
     await client.query(content);
     await client.query(
       'INSERT INTO schema_migrations (migration_name) VALUES ($1)',

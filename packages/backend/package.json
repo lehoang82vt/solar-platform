@@ -14,8 +14,12 @@
   },
   "dependencies": {
     "@solar/shared": "*",
+    "@types/bcrypt": "^6.0.0",
+    "@types/jsonwebtoken": "^9.0.10",
+    "bcrypt": "^6.0.0",
     "dotenv": "^16.3.1",
     "express": "^4.18.2",
+    "jsonwebtoken": "^9.0.3",
     "pg": "^8.11.0",
     "redis": "^4.6.0"
   },
