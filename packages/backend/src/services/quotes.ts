@@ -352,3 +352,27 @@ export async function getQuoteWithCustomer(
     } as QuoteWithCustomer;
   });
 }
+
+/**
+ * Delete quote by id (org-safe). Returns deleted row data or null if not found.
+ */
+export async function deleteQuote(
+  id: string,
+  organizationId: string
+): Promise<Pick<Quote, 'id' | 'customer_id' | 'status'> | null> {
+  return await withOrgContext(organizationId, async (client) => {
+    const result = await client.query(
+      'DELETE FROM quotes WHERE id = $1 RETURNING id, customer_id, status',
+      [id]
+    );
+    if (result.rowCount === 0) {
+      return null;
+    }
+    const row = result.rows[0];
+    return {
+      id: row.id,
+      customer_id: row.customer_id,
+      status: row.status,
+    };
+  });
+}

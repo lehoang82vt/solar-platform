@@ -15,6 +15,7 @@ import {
 } from './services/customers';
 import {
   createQuoteDraft,
+  deleteQuote,
   getQuoteWithCustomer,
   isValidQuoteId,
   listQuotes,
@@ -216,6 +217,44 @@ app.get('/api/quotes/:id', requireAuth, async (req: Request, res: Response) => {
     res.json({ value: quote });
   } catch (error) {
     console.error('Get quote error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.delete('/api/quotes/:id', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    if (!isValidQuoteId(id)) {
+      res.status(400).json({ error: 'invalid id' });
+      return;
+    }
+    const organizationId = await getDefaultOrganizationId();
+    const deleted = await deleteQuote(id, organizationId);
+
+    if (!deleted) {
+      await auditLogWrite({
+        organization_id: organizationId,
+        actor: req.user!.email,
+        action: 'quote.delete.not_found',
+        entity_type: 'quote',
+        metadata: { quote_id: id },
+      });
+      res.status(404).json({ error: 'Quote not found' });
+      return;
+    }
+
+    await auditLogWrite({
+      organization_id: organizationId,
+      actor: req.user!.email,
+      action: 'quote.delete',
+      entity_type: 'quote',
+      entity_id: deleted.id,
+      metadata: { quote_id: id, customer_id: deleted.customer_id, status: deleted.status },
+    });
+
+    res.status(200).json({ value: { id: deleted.id } });
+  } catch (error) {
+    console.error('Delete quote error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
