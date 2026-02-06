@@ -5,7 +5,8 @@ import { authenticateUser, generateToken } from './services/auth';
 import { requireAuth } from './middleware/auth';
 import {
   createProject,
-  getProjectById,
+  getProjectByIdOrgSafe,
+  isValidProjectId,
   listProjects,
 } from './services/projects';
 import {
@@ -134,14 +135,35 @@ app.post('/api/projects', requireAuth, async (req: Request, res: Response) => {
 app.get('/api/projects/:id', requireAuth, async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const project = await getProjectById(id);
+    if (!isValidProjectId(id)) {
+      res.status(400).json({ error: 'invalid id' });
+      return;
+    }
+    const organizationId = await getDefaultOrganizationId();
+    const project = await getProjectByIdOrgSafe(id, organizationId);
 
     if (!project) {
-      res.status(404).json({ error: 'Not found' });
+      await auditLogWrite({
+        organization_id: organizationId,
+        actor: req.user!.email,
+        action: 'project.get.not_found',
+        entity_type: 'project',
+        metadata: { project_id: id },
+      });
+      res.status(404).json({ error: 'Project not found' });
       return;
     }
 
-    res.json(project);
+    await auditLogWrite({
+      organization_id: organizationId,
+      actor: req.user!.email,
+      action: 'project.get',
+      entity_type: 'project',
+      entity_id: project.id,
+      metadata: { project_id: id },
+    });
+
+    res.json({ value: project });
   } catch (error) {
     console.error('Get project error:', error);
     res.status(500).json({ error: 'Internal server error' });

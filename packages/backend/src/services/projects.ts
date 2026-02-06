@@ -65,6 +65,49 @@ export async function createProject(
   });
 }
 
+/** Detail shape for GET /api/projects/:id (F-21). Schema has customer_name, address only. */
+export interface ProjectDetail {
+  id: string;
+  customer_id: string | null;
+  name: string;
+  address: string | null;
+  notes: string | null;
+  status: string;
+  created_at: string;
+}
+
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export function isValidProjectId(id: string): boolean {
+  return typeof id === 'string' && UUID_REGEX.test(id);
+}
+
+/** Get project by id (org-safe). Returns null if not found in org. */
+export async function getProjectByIdOrgSafe(
+  id: string,
+  organizationId: string
+): Promise<ProjectDetail | null> {
+  return await withOrgContext(organizationId, async (client) => {
+    const result = await client.query(
+      'SELECT id, customer_name, address, created_at FROM projects WHERE id = $1',
+      [id]
+    );
+    if (result.rows.length === 0) {
+      return null;
+    }
+    const row = result.rows[0] as { id: string; customer_name: string; address: string | null; created_at: string };
+    return {
+      id: row.id,
+      customer_id: null,
+      name: row.customer_name,
+      address: row.address,
+      notes: null,
+      status: 'draft',
+      created_at: row.created_at,
+    };
+  });
+}
+
 export async function getProjectById(id: string): Promise<Project | null> {
   const pool = getDatabasePool();
   if (!pool) {
