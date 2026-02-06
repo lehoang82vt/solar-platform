@@ -1,5 +1,4 @@
 import jwt from 'jsonwebtoken';
-import bcrypt from 'bcrypt';
 import { getDatabasePool } from '../config/database';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-key-change-in-production';
@@ -25,9 +24,14 @@ export async function authenticateUser(
   }
 
   try {
+    // Use PostgreSQL crypt() function (pgcrypto) to verify password
     const result = await pool.query(
-      'SELECT id, email, role, password_hash, is_active FROM users WHERE email = $1',
-      [email]
+      `SELECT id, email, role, is_active 
+       FROM users 
+       WHERE email = $1 
+       AND is_active = true 
+       AND password_hash = crypt($2, password_hash)`,
+      [email, password]
     );
 
     if (result.rows.length === 0) {
@@ -35,16 +39,6 @@ export async function authenticateUser(
     }
 
     const user = result.rows[0];
-
-    if (!user.is_active) {
-      return null;
-    }
-
-    const isValid = await bcrypt.compare(password, user.password_hash);
-    if (!isValid) {
-      return null;
-    }
-
     return {
       id: user.id,
       email: user.email,
