@@ -10,7 +10,9 @@ import {
 } from './services/projects';
 import {
   createCustomer,
+  deleteCustomer,
   getCustomerById,
+  isValidCustomerId,
   listCustomers,
 } from './services/customers';
 import {
@@ -160,6 +162,44 @@ app.get('/api/customers', requireAuth, async (_: Request, res: Response) => {
     res.json(customers);
   } catch (error) {
     console.error('List customers error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.delete('/api/customers/:id', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    if (!isValidCustomerId(id)) {
+      res.status(400).json({ error: 'invalid id' });
+      return;
+    }
+    const organizationId = await getDefaultOrganizationId();
+    const result = await deleteCustomer(id, organizationId);
+
+    if (!result) {
+      await auditLogWrite({
+        organization_id: organizationId,
+        actor: req.user!.email,
+        action: 'customer.delete.not_found',
+        entity_type: 'customer',
+        metadata: { customer_id: id },
+      });
+      res.status(404).json({ error: 'Customer not found' });
+      return;
+    }
+
+    await auditLogWrite({
+      organization_id: organizationId,
+      actor: req.user!.email,
+      action: 'customer.delete',
+      entity_type: 'customer',
+      entity_id: result.id,
+      metadata: { customer_id: id, mode: result.mode, quote_count: result.quoteCount },
+    });
+
+    res.status(200).json({ value: { id: result.id } });
+  } catch (error) {
+    console.error('Delete customer error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

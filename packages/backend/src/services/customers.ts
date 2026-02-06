@@ -90,3 +90,46 @@ export async function listCustomers(limit: number = 50): Promise<Customer[]> {
 
   return result.rows as Customer[];
 }
+
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export function isValidCustomerId(id: string): boolean {
+  return typeof id === 'string' && UUID_REGEX.test(id);
+}
+
+export async function deleteCustomer(
+  id: string,
+  organizationId: string
+): Promise<{ id: string; mode: 'soft' | 'hard'; quoteCount: number } | null> {
+  return await withOrgContext(organizationId, async (client) => {
+    const existResult = await client.query('SELECT id FROM customers WHERE id = $1', [id]);
+    if (existResult.rows.length === 0) {
+      return null;
+    }
+
+    const countResult = await client.query(
+      'SELECT count(*)::int AS cnt FROM quotes WHERE customer_id = $1',
+      [id]
+    );
+    const quoteCount = parseInt(String(countResult.rows[0]?.cnt ?? 0), 10);
+
+    const colResult = await client.query(
+      `SELECT column_name FROM information_schema.columns
+       WHERE table_schema = 'public' AND table_name = 'customers'
+       AND column_name IN ('is_active', 'deleted_at')`,
+      []
+    );
+    const columns = new Set((colResult.rows as { column_name: string }[]).map((r) => r.column_name));
+
+    if (columns.has('is_active')) {
+      await client.query('UPDATE customers SET is_active = false WHERE id = $1', [id]);
+      return { id, mode: 'soft', quoteCount };
+    }
+    if (columns.has('deleted_at')) {
+      await client.query('UPDATE customers SET deleted_at = now() WHERE id = $1', [id]);
+      return { id, mode: 'soft', quoteCount };
+    }
+    await client.query('DELETE FROM customers WHERE id = $1', [id]);
+    return { id, mode: 'hard', quoteCount };
+  });
+}
