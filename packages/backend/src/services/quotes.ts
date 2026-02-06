@@ -11,6 +11,7 @@ export interface QuotePayload {
 export interface Quote {
   id: string;
   customer_id: string;
+  customer_name?: string;
   status: string;
   payload: QuotePayload;
   created_at: string;
@@ -186,19 +187,38 @@ export async function getQuoteById(id: string): Promise<Quote | null> {
   };
 }
 
-export async function listQuotes(limit: number = 50): Promise<Quote[]> {
+export async function listQuotes(limit: number = 50): Promise<{ value: Quote[]; count: number }> {
   const pool = getDatabasePool();
   if (!pool) {
     throw new Error('Database pool not initialized');
   }
 
   const result = await pool.query(
-    'SELECT id, customer_id, status, payload, created_at FROM quotes ORDER BY created_at DESC LIMIT $1',
+    `SELECT 
+       quotes.id, 
+       quotes.customer_id, 
+       customers.name as customer_name,
+       quotes.status, 
+       quotes.payload, 
+       quotes.created_at 
+     FROM quotes 
+     JOIN customers ON quotes.customer_id = customers.id 
+     ORDER BY quotes.created_at DESC 
+     LIMIT $1`,
     [limit]
   );
 
-  return result.rows.map((row) => ({
-    ...row,
+  const countResult = await pool.query('SELECT COUNT(*) FROM quotes');
+  const count = parseInt(countResult.rows[0].count, 10);
+
+  const value = result.rows.map((row) => ({
+    id: row.id,
+    customer_id: row.customer_id,
+    customer_name: row.customer_name,
+    status: row.status,
     payload: typeof row.payload === 'string' ? JSON.parse(row.payload) : row.payload,
+    created_at: row.created_at,
   })) as Quote[];
+
+  return { value, count };
 }

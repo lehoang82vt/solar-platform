@@ -1,5 +1,5 @@
 import express, { Express, Request, Response } from 'express';
-import { isDatabaseConnected } from './config/database';
+import { isDatabaseConnected, getDatabasePool } from './config/database';
 import { version } from '../../shared/src';
 import { authenticateUser, generateToken } from './services/auth';
 import { requireAuth } from './middleware/auth';
@@ -203,10 +203,34 @@ app.get('/api/quotes/:id', requireAuth, async (req: Request, res: Response) => {
   }
 });
 
-app.get('/api/quotes', requireAuth, async (_: Request, res: Response) => {
+app.get('/api/quotes', requireAuth, async (req: Request, res: Response) => {
   try {
-    const quotes = await listQuotes(50);
-    res.json(quotes);
+    // Extract and validate limit from query params
+    let limit = 50;
+    if (req.query.limit) {
+      const parsedLimit = parseInt(req.query.limit as string, 10);
+      if (!isNaN(parsedLimit) && parsedLimit > 0) {
+        limit = Math.min(parsedLimit, 100); // Cap at 100
+      }
+    }
+
+    // Call listQuotes service which returns { value, count }
+    const result = await listQuotes(limit);
+
+    // Log audit event
+    const pool = getDatabasePool();
+    if (pool) {
+      await pool.query(
+        'INSERT INTO audit_events (actor, action, payload) VALUES ($1, $2, $3)',
+        [
+          req.user!.email,
+          'quote.list',
+          JSON.stringify({ limit }),
+        ]
+      );
+    }
+
+    res.json(result);
   } catch (error) {
     console.error('List quotes error:', error);
     res.status(500).json({ error: 'Internal server error' });
