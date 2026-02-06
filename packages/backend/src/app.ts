@@ -316,26 +316,45 @@ app.patch('/api/quotes/:id/payload', requireAuth, async (req: Request, res: Resp
 app.patch('/api/quotes/:id/status', requireAuth, async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { status } = req.body;
+    const body = req.body as { status?: unknown };
+    const status = body?.status;
 
-    if (!status) {
-      res.status(400).json({ error: 'status required' });
+    const validStatuses = ['draft', 'sent', 'accepted', 'rejected'] as const;
+    if (typeof status !== 'string' || !validStatuses.includes(status as (typeof validStatuses)[number])) {
+      res.status(400).json({ error: 'invalid status' });
       return;
     }
 
     const organizationId = await getDefaultOrganizationId();
-    const quote = await updateQuoteStatus(id, status, req.user!, organizationId);
-    res.json({ value: quote });
+    try {
+      const result = await updateQuoteStatus(id, status, req.user!, organizationId);
+
+      await auditLogWrite({
+        organization_id: organizationId,
+        actor: req.user!.email,
+        action: 'quote.status.update',
+        entity_type: 'quote',
+        entity_id: result.quote.id,
+        metadata: { quote_id: id, from: result.from, to: result.to },
+      });
+
+      res.json({ value: result.quote });
+    } catch (error: unknown) {
+      const err = error as Error;
+      if (err.message.includes('Quote not found')) {
+        await auditLogWrite({
+          organization_id: organizationId,
+          actor: req.user!.email,
+          action: 'quote.status.update.not_found',
+          entity_type: 'quote',
+          metadata: { quote_id: id, to: status },
+        });
+        res.status(404).json({ error: 'Quote not found' });
+        return;
+      }
+      throw error;
+    }
   } catch (error: unknown) {
-    const err = error as Error;
-    if (err.message.includes('Cannot transition') || err.message.includes('Invalid status')) {
-      res.status(400).json({ error: err.message });
-      return;
-    }
-    if (err.message.includes('not found')) {
-      res.status(404).json({ error: 'Not found' });
-      return;
-    }
     console.error('Update quote status error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
