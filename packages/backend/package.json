@@ -7,6 +7,7 @@
     "dev": "cross-env PORT=3000 ts-node-dev --respawn --transpile-only src/server.ts",
     "build": "tsc",
     "start": "node dist/server.js",
+    "migrate": "ts-node src/db/migrate.ts",
     "lint": "eslint src",
     "typecheck": "tsc --noEmit",
     "test": "jest"
