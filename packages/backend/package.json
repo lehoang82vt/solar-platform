@@ -4,7 +4,7 @@
   "private": true,
   "main": "dist/server.js",
   "scripts": {
-    "dev": "cross-env PORT=3001 ts-node-dev --respawn --transpile-only src/server.ts",
+    "dev": "cross-env PORT=3000 ts-node-dev --respawn --transpile-only src/server.ts",
     "build": "tsc",
     "start": "node dist/server.js",
     "lint": "eslint src",
