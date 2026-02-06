@@ -7,7 +7,7 @@ import {
   createProject,
   getProjectByIdOrgSafe,
   isValidProjectId,
-  listProjects,
+  listProjectsV2,
   updateProject,
   type ProjectPatch,
 } from './services/projects';
@@ -227,10 +227,40 @@ app.patch('/api/projects/:id', requireAuth, async (req: Request, res: Response) 
   }
 });
 
-app.get('/api/projects', requireAuth, async (_: Request, res: Response) => {
+app.get('/api/projects', requireAuth, async (req: Request, res: Response) => {
   try {
-    const projects = await listProjects(50);
-    res.json(projects);
+    let limit = 20;
+    if (req.query.limit !== undefined) {
+      const parsedLimit = parseInt(req.query.limit as string, 10);
+      if (isNaN(parsedLimit) || parsedLimit < 1 || parsedLimit > 100) {
+        res.status(400).json({ error: 'invalid query' });
+        return;
+      }
+      limit = parsedLimit;
+    }
+
+    let offset = 0;
+    if (req.query.offset !== undefined) {
+      const parsedOffset = parseInt(req.query.offset as string, 10);
+      if (isNaN(parsedOffset) || parsedOffset < 0) {
+        res.status(400).json({ error: 'invalid query' });
+        return;
+      }
+      offset = parsedOffset;
+    }
+
+    const organizationId = await getDefaultOrganizationId();
+    const items = await listProjectsV2(organizationId, limit, offset);
+
+    await auditLogWrite({
+      organization_id: organizationId,
+      actor: req.user!.email,
+      action: 'project.list',
+      entity_type: 'project',
+      metadata: { limit, offset, result_count: items.length },
+    });
+
+    res.status(200).json({ value: items });
   } catch (error) {
     console.error('List projects error:', error);
     res.status(500).json({ error: 'Internal server error' });

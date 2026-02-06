@@ -191,3 +191,37 @@ export async function listProjects(limit: number = 50): Promise<Project[]> {
 
   return result.rows as Project[];
 }
+
+/** List item shape for GET /api/projects v2 (F-23). customer_name exposed as name; customer_id null (schema chưa có). */
+export interface ProjectListItem {
+  id: string;
+  customer_id: null;
+  name: string;
+  address: string | null;
+  status: 'draft';
+  created_at: string;
+}
+
+/** List projects with pagination (org-safe via withOrgContext). Returns ProjectListItem[]. */
+export async function listProjectsV2(
+  organizationId: string,
+  limit: number,
+  offset: number
+): Promise<ProjectListItem[]> {
+  return await withOrgContext(organizationId, async (client) => {
+    const result = await client.query(
+      'SELECT id, customer_name, address, created_at FROM projects ORDER BY created_at DESC LIMIT $1 OFFSET $2',
+      [limit, offset]
+    );
+    return (result.rows as { id: string; customer_name: string; address: string | null; created_at: string }[]).map(
+      (row) => ({
+        id: row.id,
+        customer_id: null,
+        name: row.customer_name,
+        address: row.address,
+        status: 'draft' as const,
+        created_at: row.created_at,
+      })
+    );
+  });
+}
