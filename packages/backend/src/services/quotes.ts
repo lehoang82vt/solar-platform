@@ -22,6 +22,8 @@ export interface QuoteWithCustomer extends Quote {
   customer_name: string;
   customer_phone?: string;
   customer_email?: string;
+  /** From column quotes.price_total (for contract_value). */
+  price_total?: number | null;
 }
 
 export async function createQuoteDraft(
@@ -83,9 +85,14 @@ export async function updateQuotePayload(
     try {
       await client.query('BEGIN');
 
+      const priceTotal =
+        payload && typeof (payload as Record<string, unknown>).price_total === 'number'
+          ? (payload as Record<string, unknown>).price_total
+          : null;
       const quoteResult = await client.query(
-        'UPDATE quotes SET payload = $1 WHERE id = $2 RETURNING id, customer_id, status, payload, created_at',
-        [JSON.stringify(payload), id]
+        `UPDATE quotes SET payload = $1, price_total = $2 WHERE id = $3
+         RETURNING id, customer_id, status, payload, created_at`,
+        [JSON.stringify(payload), priceTotal, id]
       );
 
       if (quoteResult.rows.length === 0) {
@@ -269,6 +276,130 @@ export async function listQuotes(
   });
 }
 
+/** F-30: List quotes v2 item shape (join customer). */
+export interface QuoteListV2Item {
+  id: string;
+  status: string;
+  price_total: number | null;
+  created_at: string;
+  customer: {
+    id: string;
+    name: string;
+    phone: string | null;
+    email: string | null;
+  };
+}
+
+export interface ListQuotesV2Result {
+  value: QuoteListV2Item[];
+  paging: { limit: number; offset: number; count: number };
+}
+
+/**
+ * List quotes v2: join customer (name/phone/email), pagination, optional status (exact case-insensitive), search (ILIKE customer name/phone/email).
+ * limit default 20 max 100, offset default 0. Order by quotes.created_at DESC.
+ */
+export async function listQuotesV2(
+  organizationId: string,
+  limit: number,
+  offset: number,
+  filters?: { status?: string; search?: string }
+): Promise<ListQuotesV2Result> {
+  return await withOrgContext(organizationId, async (client) => {
+    const conditions: string[] = [];
+    const params: (number | string)[] = [limit, offset];
+    let paramIndex = 3;
+
+    if (filters?.status != null && filters.status.trim() !== '') {
+      conditions.push(`LOWER(TRIM(quotes.status)) = LOWER(TRIM($${paramIndex}))`);
+      params.push(filters.status.trim());
+      paramIndex += 1;
+    }
+    if (filters?.search != null && filters.search.trim() !== '') {
+      const likePattern = '%' + filters.search.trim() + '%';
+      conditions.push(
+        `(customers.name ILIKE $${paramIndex} OR customers.phone ILIKE $${paramIndex} OR customers.email ILIKE $${paramIndex})`
+      );
+      params.push(likePattern);
+      paramIndex += 1;
+    }
+
+    const whereClause = conditions.length > 0 ? ' WHERE ' + conditions.join(' AND ') : '';
+
+    const result = await client.query(
+      `SELECT 
+         quotes.id,
+         quotes.status,
+         quotes.price_total,
+         quotes.created_at,
+         customers.id as customer_id,
+         customers.name as customer_name,
+         customers.phone as customer_phone,
+         customers.email as customer_email
+       FROM quotes
+       JOIN customers ON quotes.customer_id = customers.id
+       ${whereClause}
+       ORDER BY quotes.created_at DESC
+       LIMIT $1
+       OFFSET $2`,
+      params
+    );
+
+    const countParams: (string | number)[] = [];
+    const countConditions: string[] = [];
+    let countParamIndex = 1;
+    if (filters?.status != null && filters.status.trim() !== '') {
+      countConditions.push(`LOWER(TRIM(quotes.status)) = LOWER(TRIM($${countParamIndex}))`);
+      countParams.push(filters.status.trim());
+      countParamIndex += 1;
+    }
+    if (filters?.search != null && filters.search.trim() !== '') {
+      const likePattern = '%' + filters.search.trim() + '%';
+      countConditions.push(
+        `(customers.name ILIKE $${countParamIndex} OR customers.phone ILIKE $${countParamIndex} OR customers.email ILIKE $${countParamIndex})`
+      );
+      countParams.push(likePattern);
+      countParamIndex += 1;
+    }
+    const countWhere =
+      countConditions.length > 0
+        ? ' FROM quotes JOIN customers ON quotes.customer_id = customers.id WHERE ' + countConditions.join(' AND ')
+        : ' FROM quotes';
+    const countResult = await client.query(
+      `SELECT COUNT(*)::int ${countWhere}`,
+      countParams.length > 0 ? countParams : undefined
+    );
+    const count = parseInt(String(countResult.rows[0].count), 10);
+
+    const value = (result.rows as Array<{
+      id: string;
+      status: string;
+      price_total: unknown;
+      created_at: string;
+      customer_id: string;
+      customer_name: string;
+      customer_phone: string | null;
+      customer_email: string | null;
+    }>).map((row) => ({
+      id: row.id,
+      status: row.status,
+      price_total: row.price_total != null ? Number(row.price_total) : null,
+      created_at: row.created_at,
+      customer: {
+        id: row.customer_id,
+        name: row.customer_name,
+        phone: row.customer_phone,
+        email: row.customer_email,
+      },
+    }));
+
+    return {
+      value,
+      paging: { limit, offset, count },
+    };
+  });
+}
+
 export async function getQuoteDetailById(
   organizationId: string,
   quoteId: string
@@ -328,12 +459,13 @@ export interface CreateQuoteFromProjectResult {
 
 export type CreateQuoteFromProjectOutcome =
   | { kind: 'project_not_found' }
-  | { kind: 'customer_not_found' }
+  | { kind: 'project_missing_customer' }
+  | { kind: 'customer_not_found'; customer_id: string; project_id: string }
   | { kind: 'ok'; quote: CreateQuoteFromProjectResult };
 
 /**
- * Create quote from project (org-safe). Resolves project, snapshots customer_name,
- * finds customer by name in org for FK, inserts quote with payload containing project_id.
+ * Create quote from project (org-safe). Resolves project.customer_id,
+ * validates customer by id in same org context, inserts quote with payload containing project_id.
  */
 export async function createQuoteFromProject(
   organizationId: string,
@@ -344,21 +476,27 @@ export async function createQuoteFromProject(
     return { kind: 'project_not_found' };
   }
 
+  if (!project.customer_id) {
+    return { kind: 'project_missing_customer' };
+  }
+
+  const customer_id = project.customer_id;
   const customer_name = project.name;
 
   return await withOrgContext(organizationId, async (client) => {
     const custResult = await client.query(
-      'SELECT id FROM customers WHERE name = $1 LIMIT 1',
-      [customer_name]
+      'SELECT id, name FROM customers WHERE id = $1 LIMIT 1',
+      [customer_id]
     );
     if (custResult.rows.length === 0) {
-      return { kind: 'customer_not_found' };
+      return { kind: 'customer_not_found', customer_id, project_id: payload.project_id };
     }
-    const customer_id = (custResult.rows[0] as { id: string }).id;
+    const customer = custResult.rows[0] as { id: string; name: string | null };
+    const customerNameSnapshot = customer.name ?? customer_name;
 
     const quotePayload = {
       project_id: payload.project_id,
-      customer_name_snapshot: customer_name,
+      customer_name_snapshot: customerNameSnapshot,
       ...(payload.title !== undefined && { title: payload.title }),
     };
 
@@ -379,7 +517,7 @@ export async function createQuoteFromProject(
       quote: {
         id: row.id,
         project_id: payload.project_id,
-        customer_name,
+        customer_name: customerNameSnapshot,
         status: 'draft',
         created_at: row.created_at,
       },
@@ -402,6 +540,7 @@ export async function getQuoteWithCustomer(
          q.status,
          q.payload,
          q.created_at,
+         q.price_total,
          c.name as customer_name,
          c.phone as customer_phone,
          c.email as customer_email
@@ -426,6 +565,7 @@ export async function getQuoteWithCustomer(
       customer_name: row.customer_name ?? '',
       customer_phone: row.customer_phone ?? undefined,
       customer_email: row.customer_email ?? undefined,
+      price_total: row.price_total != null ? Number(row.price_total) : null,
     } as QuoteWithCustomer;
   });
 }
@@ -472,6 +612,136 @@ export async function getQuoteDetailV3(
     ...(quote.customer_phone !== undefined && { customer_phone: quote.customer_phone }),
     ...(quote.customer_email !== undefined && { customer_email: quote.customer_email }),
   };
+}
+
+/** F-34: Quote detail v2 response (customer, project, contract, handover joins). */
+export interface QuoteDetailV2 {
+  id: string;
+  status: string;
+  price_total: number | null;
+  created_at: string;
+  customer: { id: string; name: string; phone: string | null; email: string | null } | null;
+  project: { id: string; customer_name: string; address: string | null; status: string } | null;
+  contract: { id: string; contract_number: string; status: string } | null;
+  handover: { id: string; status: string } | null;
+  payload: QuotePayload;
+}
+
+/** Result of getQuoteDetailV2 including audit flags. */
+export interface GetQuoteDetailV2Result {
+  quote: QuoteDetailV2;
+  has_project: boolean;
+  has_contract: boolean;
+  has_handover: boolean;
+}
+
+/**
+ * Get quote detail v2 (org-safe). Joins: customer (quotes.customer_id), project (payload.project_id or contract.project_id), contract (contracts.quote_id), handover (newest by project_id).
+ * Returns null if quote not found. Missing relations → null, no throw.
+ */
+export async function getQuoteDetailV2(
+  id: string,
+  organizationId: string
+): Promise<GetQuoteDetailV2Result | null> {
+  return await withOrgContext(organizationId, async (client) => {
+    const quoteResult = await client.query(
+      `SELECT q.id, q.customer_id, q.status, q.payload, q.created_at, q.price_total,
+        c.id as cu_id, c.name as cu_name, c.phone as cu_phone, c.email as cu_email
+       FROM quotes q
+       LEFT JOIN customers c ON q.customer_id = c.id
+       WHERE q.id = $1 LIMIT 1`,
+      [id]
+    );
+    if (quoteResult.rows.length === 0) {
+      return null;
+    }
+    const q = quoteResult.rows[0] as {
+      id: string;
+      customer_id: string;
+      status: string;
+      payload: unknown;
+      created_at: string;
+      price_total: unknown;
+      cu_id: string | null;
+      cu_name: string | null;
+      cu_phone: string | null;
+      cu_email: string | null;
+    };
+    const payload = (typeof q.payload === 'string' ? JSON.parse(q.payload) : q.payload) as Record<string, unknown>;
+    const projectIdFromPayload = payload?.project_id != null ? String(payload.project_id) : null;
+
+    const contractResult = await client.query(
+      `SELECT id, project_id, contract_number, status FROM contracts WHERE quote_id = $1 LIMIT 1`,
+      [id]
+    );
+    const contractRow =
+      contractResult.rows.length > 0
+        ? (contractResult.rows[0] as { id: string; project_id: string; contract_number: string; status: string })
+        : null;
+    const projectId = projectIdFromPayload ?? contractRow?.project_id ?? null;
+
+    let project: { id: string; customer_name: string; address: string | null; status: string } | null = null;
+    if (projectId) {
+      const projResult = await client.query(
+        `SELECT id, customer_name, address, COALESCE(status, 'NEW') as status FROM projects WHERE id = $1 LIMIT 1`,
+        [projectId]
+      );
+      if (projResult.rows.length > 0) {
+        const p = projResult.rows[0] as { id: string; customer_name: string; address: string | null; status: string };
+        project = { id: p.id, customer_name: p.customer_name, address: p.address, status: p.status };
+      }
+    }
+
+    let handover: { id: string; status: string } | null = null;
+    if (projectId) {
+      const hoResult = await client.query(
+        `SELECT id, status FROM handovers WHERE project_id = $1 ORDER BY created_at DESC LIMIT 1`,
+        [projectId]
+      );
+      if (hoResult.rows.length > 0) {
+        const h = hoResult.rows[0] as { id: string; status: string };
+        handover = { id: h.id, status: h.status };
+      }
+    }
+
+    const customer =
+      q.cu_id != null && q.cu_name != null
+        ? {
+            id: q.cu_id,
+            name: q.cu_name,
+            phone: q.cu_phone,
+            email: q.cu_email,
+          }
+        : null;
+
+    const contract =
+      contractRow != null
+        ? {
+            id: contractRow.id,
+            contract_number: contractRow.contract_number,
+            status: contractRow.status,
+          }
+        : null;
+
+    const quote: QuoteDetailV2 = {
+      id: q.id,
+      status: q.status,
+      price_total: q.price_total != null ? Number(q.price_total) : null,
+      created_at: q.created_at,
+      customer,
+      project,
+      contract,
+      handover,
+      payload: payload as QuotePayload,
+    };
+
+    return {
+      quote,
+      has_project: project != null,
+      has_contract: contract != null,
+      has_handover: handover != null,
+    };
+  });
 }
 
 /**

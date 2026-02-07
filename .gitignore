@@ -2,3 +2,10 @@
 dist/
 .env
 .vscode/
+
+# local debug logs
+server-dev-new.log
+server-*.log
+server-*.pid
+.turbo/
+
