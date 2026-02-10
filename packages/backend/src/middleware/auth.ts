@@ -29,3 +29,16 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
   req.user = user;
   next();
 }
+
+/** Requires requireAuth first; returns 403 if user.role !== 'admin'. */
+export function requireAdmin(req: Request, res: Response, next: NextFunction): void {
+  if (!req.user) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+  if ((req.user.role || '').toLowerCase() !== 'admin') {
+    res.status(403).json({ error: 'Forbidden' });
+    return;
+  }
+  next();
+}

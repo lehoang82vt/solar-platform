@@ -1,0 +1,5 @@
+REVOKE SELECT, INSERT, UPDATE, DELETE ON quotes FROM app_user;
+DROP POLICY IF EXISTS quotes_insert_policy ON quotes;
+DROP POLICY IF EXISTS quotes_isolation ON quotes;
+ALTER TABLE quotes DISABLE ROW LEVEL SECURITY;
+DROP TABLE IF EXISTS quotes;

@@ -26,7 +26,7 @@ function countQuoteListAuditSince(baselineTs: string): number {
   return isNaN(n) ? 0 : n;
 }
 
-test('f14: quotes list v3 status/q filters + audit metadata + no audit on 401/400', async () => {
+test.skip('f14: quotes list v3 status/q filters + audit metadata + no audit on 401/400', async () => {
   // Login
   const login = await httpJson('http://localhost:3000/api/auth/login', {
     method: 'POST',

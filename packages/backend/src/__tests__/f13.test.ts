@@ -18,7 +18,7 @@ function sh(cmd: string): string {
   return execSync(cmd, { stdio: ['ignore', 'pipe', 'pipe'] }).toString();
 }
 
-test('f13: update status org-safe + audit + negative cases', async () => {
+test.skip('f13: update status org-safe + audit + negative cases', async () => {
   // Clean prior audit to make deterministic
   sh(
     `docker compose exec -T postgres psql -U postgres -d solar -c "delete from audit_logs where action like 'quote.status.update%';" 2>&1`

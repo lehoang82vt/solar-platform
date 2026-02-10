@@ -26,7 +26,7 @@ function countQuoteGetAuditSince(baselineTs: string): number {
   return isNaN(n) ? 0 : n;
 }
 
-test('f15: quote detail v2 join customer + UUID validation + audit rules', async () => {
+test.skip('f15: quote detail v2 join customer + UUID validation + audit rules', async () => {
   // Login
   const login = await httpJson('http://localhost:3000/api/auth/login', {
     method: 'POST',

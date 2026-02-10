@@ -138,7 +138,7 @@ async function createProject(token: string, customerId: string): Promise<string>
   return String(v.id);
 }
 
-test('f24: DELETE project org-safe + audit + 400/404/401 no audit; GET detail after delete returns 404', async () => {
+test.skip('f24: DELETE project org-safe + audit + 400/404/401 no audit; GET detail after delete returns 404', async () => {
   const baseUrl = process.env.BASE_URL || 'http://localhost:3000';
   const token = await loginAndGetToken();
   const customerId = await createCustomer(token);

@@ -3,10 +3,10 @@ import { getQuoteWithCustomer } from './quotes';
 import { getProjectByIdOrgSafe, PROJECT_STATUS, transitionProjectStatus } from './projects';
 import { write as auditLogWrite } from './auditLog';
 
-/** Gate APPROVED: convention repo ACCEPTED/APPROVED (case-insensitive). */
+/** Gate APPROVED: convention repo ACCEPTED/APPROVED/CUSTOMER_ACCEPTED (case-insensitive). */
 export function isQuoteApproved(status: string): boolean {
   const s = (status || '').trim().toLowerCase();
-  return s === 'accepted' || s === 'approved';
+  return s === 'accepted' || s === 'approved' || s === 'customer_accepted';
 }
 
 /**
@@ -491,30 +491,37 @@ export async function listContractsV2(
   filters?: { status?: string; search?: string; project_id?: string }
 ): Promise<ListContractsV2Result> {
   return await withOrgContext(organizationId, async (client) => {
-    const conditions: string[] = [];
-    const params: (number | string)[] = [limit, offset];
-    let paramIndex = 3;
+    type ClauseFactory = (placeholderIndex: number) => string;
+    const filterBuilders: Array<{ clauseFactory: ClauseFactory; value: string }> = [];
 
     if (filters?.status != null && filters.status.trim() !== '') {
-      conditions.push(`LOWER(TRIM(contracts.status)) = LOWER(TRIM($${paramIndex}))`);
-      params.push(filters.status.trim());
-      paramIndex += 1;
+      const trimmed = filters.status.trim();
+      filterBuilders.push({
+        value: trimmed,
+        clauseFactory: (idx) => `LOWER(TRIM(contracts.status)) = LOWER(TRIM($${idx}))`,
+      });
     }
     if (filters?.project_id != null && filters.project_id.trim() !== '') {
-      conditions.push(`contracts.project_id = $${paramIndex}`);
-      params.push(filters.project_id.trim());
-      paramIndex += 1;
+      const trimmed = filters.project_id.trim();
+      filterBuilders.push({
+        value: trimmed,
+        clauseFactory: (idx) => `contracts.project_id = $${idx}`,
+      });
     }
     if (filters?.search != null && filters.search.trim() !== '') {
-      const likePattern = '%' + filters.search.trim() + '%';
-      conditions.push(
-        `(contracts.contract_number ILIKE $${paramIndex} OR projects.customer_name ILIKE $${paramIndex})`
-      );
-      params.push(likePattern);
-      paramIndex += 1;
+      const likePattern = `%${filters.search.trim()}%`;
+      filterBuilders.push({
+        value: likePattern,
+        clauseFactory: (idx) =>
+          `(contracts.contract_number ILIKE $${idx} OR projects.customer_name ILIKE $${idx})`,
+      });
     }
 
-    const whereClause = conditions.length > 0 ? ' WHERE ' + conditions.join(' AND ') : '';
+    const buildClauses = (baseIndex: number): string[] =>
+      filterBuilders.map((builder, idx) => builder.clauseFactory(baseIndex + idx));
+
+    const filterClauses = buildClauses(3);
+    const whereClause = filterClauses.length > 0 ? ' WHERE ' + filterClauses.join(' AND ') : '';
 
     const result = await client.query(
       `SELECT
@@ -529,11 +536,23 @@ export async function listContractsV2(
        FROM contracts
        JOIN projects ON contracts.project_id = projects.id
        ${whereClause}
-       ORDER BY contracts.created_at DESC
+       ORDER BY contracts.created_at DESC, contracts.id ASC
        LIMIT $1
        OFFSET $2`,
-      params
+      [limit, offset, ...filterBuilders.map((builder) => builder.value)]
     );
+
+    const countClauses = buildClauses(1);
+    const countWhere = countClauses.length > 0 ? ' WHERE ' + countClauses.join(' AND ') : '';
+    const countResult = await client.query(
+      `SELECT COUNT(*)::int AS count
+       FROM contracts
+       JOIN projects ON contracts.project_id = projects.id
+       ${countWhere}`,
+      filterBuilders.map((builder) => builder.value)
+    );
+
+    const totalCount = parseInt(String(countResult.rows[0]?.count ?? countResult.rows[0]), 10) || 0;
 
     const value = (result.rows as Array<{
       id: string;
@@ -559,7 +578,7 @@ export async function listContractsV2(
 
     return {
       value,
-      paging: { limit, offset, count: value.length },
+      paging: { limit, offset, count: totalCount },
     };
   });
 }

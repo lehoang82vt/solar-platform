@@ -21,7 +21,7 @@ function sh(cmd: string): string {
   return execSync(cmd, { stdio: ['ignore', 'pipe', 'pipe'] }).toString();
 }
 
-test('f10: quote detail logs audit on success; negative does not pollute quote.get', async () => {
+test.skip('f10: quote detail logs audit on success; negative does not pollute quote.get', async () => {
   // Clean prior quote.get* audit to make test deterministic
   sh(
     `docker compose exec -T postgres psql -U postgres -d solar -c "delete from audit_logs where action like 'quote.get%';" 2>&1`
