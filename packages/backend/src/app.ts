@@ -1,9 +1,13 @@
 import express, { Express, Request, Response } from 'express';
+import helmet from 'helmet';
+import cors from 'cors';
+import { config } from './config/env';
 import { isDatabaseConnected } from './config/database';
 import { version } from '../../shared/src';
 import { calculateLiteAnalysis } from '../../shared/src/utils/lite-analysis';
 import { loginUser } from './services/users';
 import { requireAuth, requireAdmin } from './middleware/auth';
+import { requestLogger } from './middleware/request-logger';
 import {
   createProject,
   deleteProject,
@@ -36,7 +40,6 @@ import {
 import {
   createQuickQuote,
   transitionDemoToReal,
-  canCreateOfficialQuote,
 } from './services/quick-quote';
 import {
   getFinancialConfig,
@@ -74,7 +77,6 @@ import {
   createQuoteFromProject,
   deleteQuote,
   getQuoteDetailV2,
-  getQuoteDetailV3,
   isValidQuoteId,
   listQuotes,
   listQuotesV2,
@@ -121,6 +123,8 @@ import {
   getCashflow,
 } from './services/bi';
 import { write as auditLogWrite, getDefaultOrganizationId } from './services/auditLog';
+import { getSalesDashboardStats, getRecentLeads } from './services/sales-dashboard';
+import { listLeads, getLeadById, updateLeadStatus, createLead } from './services/leads';
 import { createOTPChallenge, verifyOTP } from './services/otp';
 import { otpPhoneRateLimiter, otpIpRateLimiter } from './middleware/rate-limiter';
 import {
@@ -138,13 +142,70 @@ import {
 } from './services/catalog';
 import { importCatalog } from './services/catalog-import';
 import { exportCatalog } from './services/catalog-export';
+import {
+  listNotificationLogs,
+  retryFailedNotification,
+  toggleTemplate,
+  getTemplateList,
+} from './services/notification-admin';
 import multer from 'multer';
 
 const upload = multer({ storage: multer.memoryStorage() });
 
 const app: Express = express();
 
+// SEC-03: Security headers (helmet + CSP, no-cache)
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'"],
+        styleSrc: ["'self'", "'unsafe-inline'"],
+        imgSrc: ["'self'", 'data:', 'https:'],
+        connectSrc: ["'self'"],
+        fontSrc: ["'self'"],
+        objectSrc: ["'none'"],
+        mediaSrc: ["'self'"],
+        frameSrc: ["'none'"],
+      },
+    },
+    noSniff: true,
+    xssFilter: true,
+    hsts: { maxAge: 31536000, includeSubDomains: true, preload: true },
+  })
+);
+app.use((_req: Request, res: Response, next: () => void) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  next();
+});
+
+// SEC-03: CORS whitelist
+const corsOptions: cors.CorsOptions = {
+  origin: (origin, cb) => {
+    const allowed = config.corsAllowedOrigins;
+    if (allowed.length === 0) {
+      cb(null, true);
+      return;
+    }
+    if (!origin || allowed.includes(origin)) {
+      cb(null, true);
+      return;
+    }
+    cb(new Error('Not allowed by CORS'));
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+};
+app.use(cors(corsOptions));
+
 app.use(express.json());
+
+// SEC-04: Request/response logging (JSON, PII scrubbed)
+app.use(requestLogger);
 
 // Set UTF-8 charset for JSON responses
 app.use((_req: Request, res: Response, next: () => void) => {
@@ -204,13 +265,155 @@ app.get('/api/me', requireAuth, (req: Request, res: Response) => {
   res.json(req.user);
 });
 
+// Sales dashboard (Day 82)
+app.get('/api/sales/dashboard', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const organizationId = await getDefaultOrganizationId();
+    const [stats, recentLeads] = await Promise.all([
+      getSalesDashboardStats(organizationId),
+      getRecentLeads(organizationId, 5),
+    ]);
+    res.status(200).json({
+      ...stats,
+      recent_leads: recentLeads,
+    });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Internal error';
+    res.status(500).json({ error: message });
+  }
+});
+
+// Sales leads (Day 83)
+app.get('/api/sales/leads', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const organizationId = await getDefaultOrganizationId();
+    const status = req.query.status as string | undefined;
+    const leads = await listLeads(organizationId, status ? { status } : undefined);
+    res.status(200).json({ leads });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Internal error';
+    res.status(500).json({ error: message });
+  }
+});
+
+app.get('/api/sales/leads/:id', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const organizationId = await getDefaultOrganizationId();
+    const lead = await getLeadById(organizationId, id);
+    if (!lead) {
+      res.status(404).json({ error: 'Lead not found' });
+      return;
+    }
+    res.status(200).json(lead);
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Internal error';
+    res.status(500).json({ error: message });
+  }
+});
+
+app.patch('/api/sales/leads/:id', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+    if (!status || typeof status !== 'string') {
+      res.status(400).json({ error: 'status is required' });
+      return;
+    }
+    const organizationId = await getDefaultOrganizationId();
+    const lead = await updateLeadStatus(organizationId, id, status);
+    if (!lead) {
+      res.status(404).json({ error: 'Lead not found' });
+      return;
+    }
+    res.status(200).json(lead);
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Internal error';
+    res.status(500).json({ error: message });
+  }
+});
+
+app.post('/api/sales/leads', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const { phone } = req.body;
+    if (!phone || typeof phone !== 'string') {
+      res.status(400).json({ error: 'phone is required' });
+      return;
+    }
+    const organizationId = await getDefaultOrganizationId();
+    const lead = await createLead(organizationId, { phone: phone.trim() });
+    res.status(201).json(lead);
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Internal error';
+    res.status(500).json({ error: message });
+  }
+});
+
 // Admin-only (for F-03 auth middleware test: wrong_role_returns_403)
 app.get('/api/admin-only', requireAuth, requireAdmin, (_req: Request, res: Response) => {
   res.status(200).json({ ok: true });
 });
 
+// NTF-04: Admin notification APIs
+app.get('/api/admin/notifications/logs', requireAuth, requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const orgId = req.user?.organization_id ?? (await getDefaultOrganizationId());
+    const filters = {
+      status: req.query.status as 'PENDING' | 'SENT' | 'FAILED' | undefined,
+      event_type: req.query.event_type as string | undefined,
+      from_date: req.query.from_date ? new Date(req.query.from_date as string) : undefined,
+      to_date: req.query.to_date ? new Date(req.query.to_date as string) : undefined,
+      limit: req.query.limit ? parseInt(req.query.limit as string, 10) : 50,
+      offset: req.query.offset ? parseInt(req.query.offset as string, 10) : 0,
+    };
+    const logs = await listNotificationLogs(orgId, filters);
+    res.json({ logs });
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : String(error);
+    res.status(500).json({ error: msg });
+  }
+});
+
+app.post('/api/admin/notifications/logs/:id/retry', requireAuth, requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const orgId = req.user?.organization_id ?? (await getDefaultOrganizationId());
+    const result = await retryFailedNotification(orgId, req.params.id);
+    res.json(result);
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : String(error);
+    res.status(400).json({ error: msg });
+  }
+});
+
+app.get('/api/admin/notifications/templates', requireAuth, requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const orgId = req.user?.organization_id ?? (await getDefaultOrganizationId());
+    const templates = await getTemplateList(orgId);
+    res.json({ templates });
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : String(error);
+    res.status(500).json({ error: msg });
+  }
+});
+
+app.patch('/api/admin/notifications/templates/:id', requireAuth, requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const orgId = req.user?.organization_id ?? (await getDefaultOrganizationId());
+    const { active } = req.body;
+    if (typeof active !== 'boolean') {
+      res.status(400).json({ error: 'active must be boolean' });
+      return;
+    }
+    await toggleTemplate(orgId, req.params.id, active);
+    res.json({ success: true });
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : String(error);
+    res.status(400).json({ error: msg });
+  }
+});
+
 // FIN-01: Financial config (admin only)
-app.get('/api/financial/config', requireAuth, requireAdmin, async (req: Request, res: Response) => {
+app.get('/api/financial/config', requireAuth, requireAdmin, async (_req: Request, res: Response) => {
   try {
     const orgId = await getDefaultOrganizationId();
     const config = await getFinancialConfig(orgId);
@@ -2447,7 +2650,7 @@ app.get('/api/quotes/:id/v2', requireAuth, async (req: Request, res: Response) =
   }
 });
 
-app.get('/api/quotes/pending', requireAuth, requireAdmin, async (req: Request, res: Response) => {
+app.get('/api/quotes/pending', requireAuth, requireAdmin, async (_req: Request, res: Response) => {
   try {
     const orgId = await getDefaultOrganizationId();
     const quotes = await getPendingQuotes(orgId);
@@ -2888,7 +3091,7 @@ app.patch('/api/quotes/:id/status', requireAuth, async (req: Request, res: Respo
 });
 
 // BI Dashboard APIs (BI-02) – Admin only
-app.get('/api/bi/overview', requireAuth, requireAdmin, async (req: Request, res: Response) => {
+app.get('/api/bi/overview', requireAuth, requireAdmin, async (_req: Request, res: Response) => {
   try {
     const organizationId = await getDefaultOrganizationId();
     const overview = await getBIOverview(organizationId);
@@ -2951,7 +3154,7 @@ app.get('/api/bi/sales-ranking', requireAuth, requireAdmin, async (req: Request,
   }
 });
 
-app.get('/api/bi/partner-stats', requireAuth, requireAdmin, async (req: Request, res: Response) => {
+app.get('/api/bi/partner-stats', requireAuth, requireAdmin, async (_req: Request, res: Response) => {
   try {
     const organizationId = await getDefaultOrganizationId();
     const stats = await getPartnerStats(organizationId);
@@ -3029,6 +3232,15 @@ app.post('/api/bi/refresh', requireAuth, requireAdmin, async (_req: Request, res
     console.error('BI refresh error:', error);
     res.status(500).json({ error: (error as Error).message ?? 'Internal server error' });
   }
+});
+
+// SEC-03: CORS rejection returns 403
+app.use((err: unknown, _req: Request, res: Response, next: (err?: unknown) => void) => {
+  if (err && typeof err === 'object' && 'message' in err && (err as Error).message === 'Not allowed by CORS') {
+    res.status(403).json({ error: 'Not allowed by CORS' });
+    return;
+  }
+  next(err);
 });
 
 // TEMP ROUTE DUMP (remove before final commit)

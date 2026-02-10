@@ -1,5 +1,6 @@
 import { withOrgContext } from '../config/database';
 import { normalizePhone } from '../../../shared/src/utils/phone';
+import { eventBus } from './event-bus';
 
 export interface Lead {
   id: string;
@@ -57,6 +58,75 @@ export async function createLead(
       ]
     );
 
-    return result.rows[0] as Lead;
+    const lead = result.rows[0] as Lead;
+    await eventBus.emit({
+      type: 'lead.created',
+      organizationId,
+      data: { lead_id: lead.id, customer_phone: lead.phone },
+    });
+    return lead;
+  });
+}
+
+/**
+ * List leads for organization with optional status filter.
+ */
+export async function listLeads(
+  organizationId: string,
+  filters?: { status?: string }
+): Promise<Lead[]> {
+  return await withOrgContext(organizationId, async (client) => {
+    let query = `SELECT id, organization_id, phone, status, partner_code, first_touch_partner, created_at
+                 FROM leads WHERE organization_id = $1`;
+    const params: string[] = [organizationId];
+    if (filters?.status) {
+      query += ` AND status = $2`;
+      params.push(filters.status);
+    }
+    query += ` ORDER BY created_at DESC`;
+    const result = await client.query(query, params);
+    return result.rows as Lead[];
+  });
+}
+
+/**
+ * Get a single lead by id (org-scoped).
+ */
+export async function getLeadById(
+  organizationId: string,
+  leadId: string
+): Promise<Lead | null> {
+  return await withOrgContext(organizationId, async (client) => {
+    const result = await client.query(
+      `SELECT id, organization_id, phone, status, partner_code, first_touch_partner, created_at
+       FROM leads WHERE organization_id = $1 AND id = $2 LIMIT 1`,
+      [organizationId, leadId]
+    );
+    return (result.rows[0] as Lead) ?? null;
+  });
+}
+
+/** Allowed status values for lead status update */
+const ALLOWED_STATUSES = ['RECEIVED', 'CONTACTED', 'QUALIFIED', 'LOST'];
+
+/**
+ * Update lead status (org-scoped).
+ */
+export async function updateLeadStatus(
+  organizationId: string,
+  leadId: string,
+  status: string
+): Promise<Lead | null> {
+  if (!ALLOWED_STATUSES.includes(status)) {
+    throw new Error(`Invalid status: ${status}`);
+  }
+  return await withOrgContext(organizationId, async (client) => {
+    const result = await client.query(
+      `UPDATE leads SET status = $1, updated_at = NOW()
+       WHERE organization_id = $2 AND id = $3
+       RETURNING id, organization_id, phone, status, partner_code, first_touch_partner, created_at`,
+      [status, organizationId, leadId]
+    );
+    return (result.rows[0] as Lead) ?? null;
   });
 }

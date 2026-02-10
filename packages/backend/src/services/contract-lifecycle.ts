@@ -6,6 +6,7 @@
 import { withOrgContext } from '../config/database';
 import { write as auditLogWrite } from './auditLog';
 import { CONTRACT_STATE_TRANSITIONS } from '../../../shared/src/constants/states';
+import { eventBus } from './event-bus';
 
 const STATUS_DRAFT = 'DRAFT';
 const STATUS_SIGNED = 'SIGNED';
@@ -180,6 +181,11 @@ export async function signContract(
             customer_signed_at: after.customer_signed_at,
             company_signed_at: after.company_signed_at,
           },
+        });
+        await eventBus.emit({
+          type: 'contract.signed',
+          organizationId,
+          data: { contract_id: contractId, contract_number: after.contract_number },
         });
         return { kind: 'ok', contract: signedContract, fromStatus: statusUpper };
       }

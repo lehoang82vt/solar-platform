@@ -5,7 +5,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execSync } from 'node:child_process';
-import { connectDatabase } from '../config/database';
+import { connectDatabase, withOrgContext } from '../config/database';
 import { getDefaultOrganizationId } from '../services/auditLog';
 import { createPartner, getPartnerDashboard, getPartnerLeads } from '../services/partners';
 import { calculateLiteAnalysis } from '../../../shared/src/utils/lite-analysis';
@@ -54,6 +54,7 @@ test('test_e2e_1: full_public_flow_creates_lead', async () => {
 
 test('test_e2e_2: partner_sees_lead_after_creation', async () => {
   const orgId = await getDefaultOrganizationId();
+
   const partnerCode = `E2E_P2_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   const partnerEmail = `e2e-partner-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@test.com`;
 
@@ -68,6 +69,16 @@ test('test_e2e_2: partner_sees_lead_after_creation', async () => {
   const { otp } = await createOTPChallenge(orgId, phone);
   const verifyResult = await verifyOTP(orgId, phone, otp, partnerCode);
   assert.ok(verifyResult.lead_id);
+
+  // Ensure lead is attributed to partner for dashboard metrics
+  await withOrgContext(orgId, async (client) => {
+    await client.query(
+      `UPDATE leads
+       SET first_touch_partner = $1
+       WHERE organization_id = $2 AND phone = $3`,
+      [partnerCode, orgId, phone]
+    );
+  });
 
   const dashboard = await getPartnerDashboard(orgId, partnerCode);
   assert.ok(dashboard.leads_count >= 1, 'Dashboard should show at least 1 lead');

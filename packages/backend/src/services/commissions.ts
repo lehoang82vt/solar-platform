@@ -1,5 +1,6 @@
 import { withOrgContext } from '../config/database';
 import { write as auditLogWrite } from './auditLog';
+import { eventBus } from './event-bus';
 
 export interface Commission {
   id: string;
@@ -27,6 +28,7 @@ export async function listPartnerCommissions(
 /**
  * AUD-01: Record commission payment in audit log.
  * Call when a commission is marked PAID (or when recording a payment event).
+ * NTF-02: Emits commission.paid for notification.
  */
 export async function recordCommissionPayment(
   organizationId: string,
@@ -43,4 +45,12 @@ export async function recordCommissionPayment(
     entity_id: commissionId,
     metadata: { commission_id: commissionId, amount, ...metadata },
   });
+  const partnerId = metadata?.partner_id as string | undefined;
+  if (partnerId != null) {
+    await eventBus.emit({
+      type: 'commission.paid',
+      organizationId,
+      data: { commission_id: commissionId, partner_id: partnerId, amount },
+    });
+  }
 }

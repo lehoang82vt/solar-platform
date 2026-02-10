@@ -1,9 +1,11 @@
 import app from './app';
 import { config } from './config/env';
+import { validateEnv } from './config/env-validator';
 import { connectDatabase } from './config/database';
 
 async function startServer(): Promise<void> {
   try {
+    validateEnv();
     await connectDatabase();
     
     app.listen(config.port, '0.0.0.0', () => {

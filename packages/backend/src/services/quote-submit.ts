@@ -2,6 +2,7 @@ import { withOrgContext } from '../config/database';
 import { QUOTE_STATE_TRANSITIONS } from '../../../shared/src/constants/states';
 import type { QuoteState } from '../../../shared/src/constants/states';
 import { checkSalesBlocked, write as auditLogWrite } from './auditLog';
+import { eventBus } from './event-bus';
 
 /**
  * Submit quote for approval.
@@ -70,6 +71,14 @@ export async function submitQuote(
         entity_id: quoteId,
         metadata: { quote_id: quoteId, auto_approval: true },
       });
+      const projectId = row.project_id as string | undefined;
+      if (projectId) {
+        await eventBus.emit({
+          type: 'quote.approved',
+          organizationId,
+          data: { quote_id: quoteId, project_id: projectId },
+        });
+      }
     }
 
     return {
