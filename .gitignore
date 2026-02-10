@@ -12,3 +12,6 @@ server-*.pid
 # Bản sao thu gọn để gửi Claude (tạo bởi scripts/export-copy-for-claude.ps1)
 Solar-export/
 Solar-for-Claude.zip
+.env
+.env.*
+
