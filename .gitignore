@@ -15,3 +15,7 @@ Solar-for-Claude.zip
 .env
 .env.*
 
+
+backend-dev.log
+backend-dev.err
+
