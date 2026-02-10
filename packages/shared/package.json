@@ -7,7 +7,8 @@
   "scripts": {
     "build": "tsc",
     "lint": "eslint src",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "node --experimental-strip-types --test src/utils/__tests__/financial.test.ts"
   },
   "dependencies": {},
   "devDependencies": {

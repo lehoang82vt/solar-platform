@@ -1,4 +1,4 @@
-﻿node_modules/
+node_modules/
 dist/
 .env
 .vscode/
@@ -9,3 +9,6 @@ server-*.log
 server-*.pid
 .turbo/
 
+# Bản sao thu gọn để gửi Claude (tạo bởi scripts/export-copy-for-claude.ps1)
+Solar-export/
+Solar-for-Claude.zip

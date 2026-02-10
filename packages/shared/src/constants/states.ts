@@ -1,0 +1,93 @@
+export const PROJECT_STATES = {
+  SURVEY_PENDING: 'SURVEY_PENDING',
+  SURVEY_IN_PROGRESS: 'SURVEY_IN_PROGRESS',
+  SURVEY_COMPLETED: 'SURVEY_COMPLETED',
+  DESIGN_IN_PROGRESS: 'DESIGN_IN_PROGRESS',
+  QUOTE_READY: 'QUOTE_READY',
+  QUOTE_SENT: 'QUOTE_SENT',
+  QUOTE_APPROVED: 'QUOTE_APPROVED',
+  CANCELLED: 'CANCELLED',
+} as const;
+
+export const PROJECT_STATE_TRANSITIONS: Record<string, string[]> = {
+  SURVEY_PENDING: ['SURVEY_IN_PROGRESS', 'CANCELLED'],
+  SURVEY_IN_PROGRESS: ['SURVEY_COMPLETED', 'CANCELLED'],
+  SURVEY_COMPLETED: ['DESIGN_IN_PROGRESS', 'CANCELLED'],
+  DESIGN_IN_PROGRESS: ['QUOTE_READY', 'CANCELLED'],
+  QUOTE_READY: ['QUOTE_SENT', 'CANCELLED'],
+  QUOTE_SENT: ['QUOTE_APPROVED', 'CANCELLED'],
+  QUOTE_APPROVED: ['CANCELLED'],
+  CANCELLED: [],
+};
+
+export const LEAD_STATES = {
+  RECEIVED: 'RECEIVED',
+  CONTACTED: 'CONTACTED',
+  CONSULTING: 'CONSULTING',
+  QUALIFIED: 'QUALIFIED',
+  LOST: 'LOST',
+} as const;
+
+export const LEAD_STATE_TRANSITIONS: Record<string, string[]> = {
+  RECEIVED: ['CONTACTED', 'LOST'],
+  CONTACTED: ['CONSULTING', 'LOST'],
+  CONSULTING: ['QUALIFIED', 'LOST'],
+  QUALIFIED: [],
+  LOST: [],
+};
+
+/**
+ * Quote states
+ */
+export const QUOTE_STATES = [
+  'DRAFT',
+  'PENDING_APPROVAL',
+  'APPROVED',
+  'SENT',
+  'CUSTOMER_ACCEPTED',
+  'CUSTOMER_REJECTED',
+  'EXPIRED',
+  'CANCELLED',
+] as const;
+
+export type QuoteState = (typeof QUOTE_STATES)[number];
+
+/**
+ * Quote state transitions
+ */
+export const QUOTE_STATE_TRANSITIONS: Record<QuoteState, QuoteState[]> = {
+  DRAFT: ['PENDING_APPROVAL', 'CANCELLED'],
+  PENDING_APPROVAL: ['APPROVED', 'DRAFT', 'CANCELLED'],
+  APPROVED: ['SENT', 'CANCELLED'],
+  SENT: ['CUSTOMER_ACCEPTED', 'CUSTOMER_REJECTED', 'EXPIRED', 'CANCELLED'],
+  CUSTOMER_ACCEPTED: ['CANCELLED'], // Can cancel before contract
+  CUSTOMER_REJECTED: [],
+  EXPIRED: ['DRAFT'], // Can create new version
+  CANCELLED: [],
+};
+
+/**
+ * Contract states
+ */
+export const CONTRACT_STATES = [
+  'DRAFT',
+  'PENDING_SIGNATURE',
+  'SIGNED',
+  'IN_PROGRESS',
+  'COMPLETED',
+  'CANCELLED',
+] as const;
+
+export type ContractState = (typeof CONTRACT_STATES)[number];
+
+/**
+ * Contract state transitions
+ */
+export const CONTRACT_STATE_TRANSITIONS: Record<ContractState, ContractState[]> = {
+  DRAFT: ['PENDING_SIGNATURE', 'CANCELLED'],
+  PENDING_SIGNATURE: ['SIGNED', 'DRAFT', 'CANCELLED'],
+  SIGNED: ['IN_PROGRESS', 'CANCELLED'],
+  IN_PROGRESS: ['COMPLETED', 'CANCELLED'],
+  COMPLETED: [],
+  CANCELLED: [],
+};

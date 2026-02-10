@@ -1,0 +1,204 @@
+# ═══════════════════════════════════════════
+# TESTING & VERIFICATION RULES
+# ═══════════════════════════════════════════
+
+## ANTI-FAKE PROTOCOL
+
+**CRITICAL:** NEVER fabricate or mock test results. ALWAYS run real tests.
+
+### When implementing migrations:
+
+1. **BEFORE migrate:** Count tables
+   ```bash
+   docker compose exec -T postgres psql -U postgres -d solar -tAc \
+     "SELECT COUNT(*) FROM pg_tables WHERE schemaname='public';"
+   ```
+
+2. **RUN migrate:** Show full migration log
+   ```bash
+   npm run migrate
+   ```
+   MUST see: "✓ Applied: XXX_migration_name.sql"
+
+3. **AFTER migrate:** Verify table count increased
+   ```bash
+   docker compose exec -T postgres psql -U postgres -d solar -tAc \
+     "SELECT COUNT(*) FROM pg_tables WHERE schemaname='public';"
+   ```
+
+4. **VERIFY seed data:** Query actual data
+   ```bash
+   docker compose exec -T postgres psql -U postgres -d solar -c \
+     "SELECT * FROM table_name LIMIT 5;"
+   ```
+
+5. **VERIFY RLS:** Test with fake org_id
+   ```bash
+   docker compose exec -T postgres psql -U app_user -d solar -c \
+     "SET app.current_org_id='00000000-0000-0000-0000-000000000000'; \
+      SELECT COUNT(*) FROM table_name;"
+   ```
+   MUST return: 0 rows
+
+6. **RUN tests:** Full raw output
+   ```bash
+   node -r ts-node/register --test src/__tests__/test_file.test.ts
+   ```
+
+### RAW OUTPUT REQUIREMENTS
+
+**MANDATORY:** ALWAYS provide COMPLETE raw terminal output including:
+
+✅ DO:
+- Full command executed
+- Complete output (all lines)
+- Error messages if any
+- Test results with timing
+- Migration logs showing "Applied" or "Already applied"
+
+❌ DON'T:
+- Summarize results ("tests passed")
+- Paraphrase output
+- Say "it works" without showing output
+- Skip verification steps
+- Mock or fabricate data
+
+### Example CORRECT output format:
+
+```
+=== STEP 1: Table count BEFORE ===
+$ docker compose exec -T postgres psql -U postgres -d solar -tAc "SELECT COUNT(*) FROM pg_tables WHERE schemaname='public';"
+14
+
+=== STEP 2: Run migration ===
+$ npm run migrate
+> @solar/backend@0.1.0 migrate
+> ts-node src/db/migrate.ts
+✓ Applied: 017_catalog_pv_modules.sql
+✓ Applied: 018_catalog_inverters.sql
+...
+
+=== STEP 3: Table count AFTER ===
+$ docker compose exec -T postgres psql -U postgres -d solar -tAc "SELECT COUNT(*) FROM pg_tables WHERE schemaname='public';"
+18
+
+[Continue with all verification steps...]
+```
+
+### Test Output Parsing
+
+When test output includes extra lines (like "SET" from psql):
+
+```typescript
+// Parse multi-line output correctly
+const lines = result.split('\n')
+  .filter(l => l.trim() && !l.toUpperCase().includes('SET'));
+const actualValue = lines[lines.length - 1].trim();
+```
+
+### RLS Testing
+
+**ALWAYS test RLS with app_user, NOT postgres:**
+
+```typescript
+// ❌ WRONG - postgres may bypass RLS
+sh(`docker compose exec -T postgres psql -U postgres ...`);
+
+// ✅ CORRECT - app_user subject to RLS
+sh(`docker compose exec -T postgres psql -U app_user -d solar ...`);
+```
+
+### Database State Verification
+
+For integration tests that depend on DB state:
+
+1. **Use baseline timestamps:**
+   ```typescript
+   const baselineTs = pgNow();
+   await sleep(200);
+   // ... perform action
+   await sleep(200);
+   const count = await countSince(baselineTs);
+   ```
+
+2. **Use >= instead of exact counts** when appropriate:
+   ```typescript
+   assert.ok(count >= 1); // Better than assert.equal(count, 1)
+   ```
+
+3. **Make tests idempotent:**
+   - Check for existing data before insert
+   - Use ON CONFLICT when appropriate
+   - Clean up test data when necessary
+
+### Migration Best Practices
+
+1. **Always include down migrations:**
+   ```sql
+   -- migration/down/XXX_name.down.sql
+   DROP POLICY IF EXISTS policy_name ON table_name;
+   DROP TABLE IF EXISTS table_name;
+   ```
+
+2. **Use uuid_generate_v4() for IDs**
+
+3. **Always enable RLS:**
+   ```sql
+   ALTER TABLE table_name ENABLE ROW LEVEL SECURITY;
+   ```
+
+4. **Always create RLS policies:**
+   ```sql
+   CREATE POLICY table_isolation ON table_name
+     USING (organization_id = (current_setting('app.current_org_id', true))::uuid);
+   ```
+
+5. **Seed migrations must be idempotent:**
+   ```sql
+   INSERT INTO table_name (...)
+   VALUES (...)
+   ON CONFLICT (unique_constraint) DO NOTHING;
+   ```
+
+### Error Handling in Tests
+
+```typescript
+// Handle command errors properly
+function sh(cmd: string, allowFail = false): string {
+  try {
+    return execSync(cmd, { 
+      encoding: 'utf8', 
+      stdio: ['ignore', 'pipe', 'pipe'] 
+    }).toString();
+  } catch (err: unknown) {
+    if (allowFail) {
+      const e = err as { stdout?: string; stderr?: string };
+      return (e.stdout ?? '') + (e.stderr ?? '');
+    }
+    throw err;
+  }
+}
+```
+
+### Test Isolation
+
+- Each test should be independent
+- Use unique identifiers (phone numbers, emails, SKUs)
+- Consider test data cleanup if needed
+- Use baseline timestamps for audit log counting
+
+---
+
+## VERIFICATION CHECKLIST
+
+Before marking ANY task as complete:
+
+- [ ] All commands executed successfully
+- [ ] Raw output provided for ALL steps
+- [ ] Database state verified (table count, data exists)
+- [ ] RLS tested and working (0 rows with fake org)
+- [ ] All tests pass (X/X shown in output)
+- [ ] No mocked or fabricated data
+- [ ] Error messages included if any issues
+- [ ] Migration logs show "Applied" messages
+- [ ] Seed data queryable from database

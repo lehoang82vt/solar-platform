@@ -1,0 +1,48 @@
+
+> @solar/backend@0.1.0 dev
+> cross-env PORT=3000 ts-node-dev --respawn --transpile-only src/server.ts
+
+[INFO] 17:41:44 ts-node-dev ver. 2.0.0 (using ts-node ver. 10.9.2, typescript ver. 5.9.3)
+[routes] [
+  'get /api/health',
+  'post /api/auth/login',
+  'get /api/me',
+  'post /api/projects',
+  'get /api/projects/v3',
+  'get /api/projects/:id',
+  'patch /api/projects/:id',
+  'post /api/projects/:projectId/status/recompute',
+  'post /api/projects/:projectId/status/transition',
+  'post /api/projects/:projectId/quotes',
+  'post /api/projects/:projectId/quotes/:quoteId/approve',
+  'post /api/projects/:projectId/contracts',
+  'get /api/projects/:projectId/contracts',
+  'get /api/projects/:projectId/contracts/:contractId',
+  'patch /api/projects/:projectId/contracts/:contractId',
+  'post /api/projects/:projectId/contracts/:contractId/sign',
+  'post /api/projects/:projectId/contracts/:contractId/transition',
+  'get /api/contracts/v2',
+  'get /api/contracts/:id/v2',
+  'get /api/handovers/v2',
+  'post /api/projects/:projectId/handovers',
+  'get /api/projects/:projectId/handovers',
+  'get /api/projects/:projectId/handovers/:handoverId',
+  'patch /api/projects/:projectId/handovers/:handoverId',
+  'post /api/projects/:projectId/handovers/:handoverId/sign',
+  'post /api/projects/:projectId/handovers/:handoverId/complete',
+  'get /api/projects',
+  'delete /api/projects/:id',
+  'post /api/customers',
+  'get /api/customers/:id',
+  'patch /api/customers/:id',
+  'get /api/customers',
+  'delete /api/customers/:id',
+  'post /api/quotes',
+  'get /api/quotes/v2',
+  'get /api/quotes/:id/v2',
+  'get /api/quotes/:id',
+  'delete /api/quotes/:id',
+  'get /api/quotes',
+  'patch /api/quotes/:id/payload',
+  'patch /api/quotes/:id/status'
+]
