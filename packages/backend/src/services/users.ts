@@ -56,28 +56,37 @@ export async function createUser(
 }
 
 /**
- * Login user
+ * Login user - uses PostgreSQL crypt() for password verification
  */
 export async function loginUser(
   organizationId: string,
   email: string,
   password: string
 ): Promise<{ token: string; user: User } | null> {
-  const passwordHash = hashPassword(password);
-
   return await withOrgContext(organizationId, async (client) => {
-    const result = await client.query(
-      `SELECT id, organization_id, email, full_name, role, status
+    // Get user by email (including password_hash for verification)
+    const result = await client.query<User & { password_hash: string }>(
+      `SELECT id, organization_id, email, full_name, role, status, password_hash
        FROM users
-       WHERE organization_id = $1 AND email = $2 AND password_hash = $3`,
-      [organizationId, email, passwordHash]
+       WHERE organization_id = $1 AND email = $2`,
+      [organizationId, email]
     );
 
     if (result.rows.length === 0) {
       return null;
     }
 
-    const user = result.rows[0] as User;
+    const user = result.rows[0];
+
+    // Verify password using PostgreSQL crypt function
+    const verifyResult = await client.query<{ is_valid: boolean }>(
+      `SELECT $1 = crypt($2, $1) as is_valid`,
+      [user.password_hash, password]
+    );
+
+    if (!verifyResult.rows[0]?.is_valid) {
+      return null;
+    }
 
     if (user.status === 'SUSPENDED') {
       throw new Error('User account is suspended');
@@ -94,9 +103,12 @@ export async function loginUser(
       role: user.role,
     };
 
-    const token = jwt.sign(payload, JWT_SECRET, { expiresIn: '7d' });
+    const token = jwt.sign(payload, JWT_SECRET!, { expiresIn: '7d' });
 
-    return { token, user };
+    // Remove password_hash before returning
+    const { password_hash, ...userWithoutPassword } = user;
+
+    return { token, user: userWithoutPassword };
   });
 }
 
@@ -105,7 +117,7 @@ export async function loginUser(
  */
 export function verifyUserToken(token: string): UserJWT | null {
   try {
-    return jwt.verify(token, JWT_SECRET) as UserJWT;
+    return jwt.verify(token, JWT_SECRET!) as UserJWT;
   } catch {
     return null;
   }
