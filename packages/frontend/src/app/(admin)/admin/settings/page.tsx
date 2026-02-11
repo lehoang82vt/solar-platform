@@ -1,13 +1,14 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { useAuthStore } from '@/stores/authStore';
-import { Key } from 'lucide-react';
+import { Key, DollarSign, ArrowRight } from 'lucide-react';
 
 export default function AdminSettingsPage() {
   const { toast } = useToast();
@@ -100,6 +101,30 @@ export default function AdminSettingsPage() {
       </div>
 
       <div className="space-y-6">
+        {/* Quick Links */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Cài đặt hệ thống</CardTitle>
+            <CardDescription>
+              Truy cập nhanh các trang cấu hình
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-3">
+            <Link href="/admin/settings/financial">
+              <div className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50 transition-colors cursor-pointer">
+                <div className="flex items-center gap-3">
+                  <DollarSign className="w-5 h-5 text-green-600" />
+                  <div>
+                    <p className="font-medium">Cấu hình tài chính</p>
+                    <p className="text-sm text-muted-foreground">Margin, chi phí cứng/mềm, ngưỡng lợi nhuận</p>
+                  </div>
+                </div>
+                <ArrowRight className="w-5 h-5 text-gray-400" />
+              </div>
+            </Link>
+          </CardContent>
+        </Card>
+
         {/* Account Info */}
         <Card>
           <CardHeader>
