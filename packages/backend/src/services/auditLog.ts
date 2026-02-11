@@ -1,4 +1,4 @@
-import { withOrgContext } from '../config/database';
+import { withOrgContext, getDatabasePool } from '../config/database';
 
 export interface AuditLogEntry {
   organization_id: string;
@@ -42,7 +42,6 @@ export async function write(entry: AuditLogEntry): Promise<void> {
  */
 export async function getDefaultOrganizationId(): Promise<string> {
   // organizations is NOT org-scoped (no RLS). Use a one-off org context-less query.
-  const { getDatabasePool } = await import('../config/database');
   const pool = getDatabasePool();
   if (!pool) throw new Error('Database pool not initialized');
 
