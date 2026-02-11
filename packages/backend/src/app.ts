@@ -2,7 +2,7 @@ import express, { Express, Request, Response } from 'express';
 import helmet from 'helmet';
 import cors from 'cors';
 import { config } from './config/env';
-import { isDatabaseConnected } from './config/database';
+import { isDatabaseConnected, getDatabasePool } from './config/database';
 import { version } from '../../shared/src';
 import { calculateLiteAnalysis } from '../../shared/src/utils/lite-analysis';
 import { loginUser } from './services/users';
@@ -267,6 +267,58 @@ app.post('/api/auth/login', async (req: Request, res: Response) => {
 // Get current user
 app.get('/api/me', requireAuth, (req: Request, res: Response) => {
   res.json(req.user);
+});
+
+// Change password
+app.post('/api/auth/change-password', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const { oldPassword, newPassword } = req.body;
+    const userId = req.user?.id;
+
+    if (!oldPassword || !newPassword) {
+      res.status(400).json({ error: 'Mật khẩu cũ và mật khẩu mới là bắt buộc' });
+      return;
+    }
+
+    if (!userId) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+
+    if (newPassword.length < 8) {
+      res.status(400).json({ error: 'Mật khẩu mới phải có ít nhất 8 ký tự' });
+      return;
+    }
+
+    const pool = getDatabasePool();
+    if (!pool) {
+      res.status(500).json({ error: 'Database not connected' });
+      return;
+    }
+
+    // Verify old password using crypt
+    const verifyResult = await pool.query(
+      'SELECT (password_hash = crypt($1, password_hash)) AS valid FROM users WHERE id = $2',
+      [oldPassword, userId]
+    );
+
+    if (!verifyResult.rows[0]?.valid) {
+      res.status(401).json({ error: 'Mật khẩu hiện tại không đúng' });
+      return;
+    }
+
+    // Update password with new hash
+    await pool.query(
+      'UPDATE users SET password_hash = crypt($1, gen_salt($2)) WHERE id = $3',
+      [newPassword, 'bf', userId]
+    );
+
+    res.status(200).json({ message: 'Đổi mật khẩu thành công' });
+  } catch (error: unknown) {
+    console.error('Change password error:', error);
+    const message = error instanceof Error ? error.message : 'Internal server error';
+    res.status(500).json({ error: message });
+  }
 });
 
 // Sales dashboard (Day 82)
