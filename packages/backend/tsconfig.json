@@ -2,6 +2,7 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "outDir": "dist",
+    "rootDir": "../../",
     "declaration": true,
     "declarationMap": true,
     "sourceMap": true,
@@ -12,7 +13,7 @@
       "@shared/*": ["../../packages/shared/src/*"]
     }
   },
-  "include": ["src"],
+  "include": ["src", "../../packages/shared/src"],
   "exclude": ["node_modules", "dist", "**/*.test.ts"]
 }
 

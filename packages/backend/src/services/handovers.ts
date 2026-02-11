@@ -84,7 +84,9 @@ export async function createHandover(
 
   const acceptance = input.acceptance_json ?? {};
   const validation = validateAcceptanceJson(acceptance);
-  if (!validation.ok) return { kind: 'validation_failed', missing_fields: validation.missing_fields };
+  if (!validation.ok) {
+    return { kind: 'validation_failed', missing_fields: validation.missing_fields };
+  }
 
   return await withOrgContext(organizationId, async (client) => {
     const result = await client.query(
@@ -380,7 +382,9 @@ export async function updateHandover(
     }
     if (patch.acceptance_json !== undefined) {
       const validation = validateAcceptanceJson(patch.acceptance_json);
-      if (!validation.ok) return { kind: 'validation_failed', missing_fields: validation.missing_fields };
+      if (!validation.ok) {
+        return { kind: 'validation_failed', missing_fields: validation.missing_fields };
+      }
       await client.query(
         `UPDATE handovers SET acceptance_json = $1, updated_at = now() WHERE id = $2 AND project_id = $3`,
         [JSON.stringify(patch.acceptance_json), handoverId, projectId]

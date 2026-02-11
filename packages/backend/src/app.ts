@@ -2574,7 +2574,10 @@ app.post('/api/quotes', requireAuth, async (req: Request, res: Response) => {
         return;
       }
 
-      const result = await createQuoteFromProject(organizationId, { project_id, title });
+      const result = await createQuoteFromProject(organizationId, {
+        project_id,
+        title: title as string | undefined
+      });
 
       if (result.kind === 'project_not_found') {
         await auditLogWrite({
