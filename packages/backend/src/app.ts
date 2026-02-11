@@ -270,7 +270,7 @@ app.get('/api/me', requireAuth, (req: Request, res: Response) => {
 });
 
 // Sales dashboard (Day 82)
-app.get('/api/sales/dashboard', requireAuth, async (req: Request, res: Response) => {
+app.get('/api/sales/dashboard', requireAuth, async (_req: Request, res: Response) => {
   try {
     const organizationId = await getDefaultOrganizationId();
     const [stats, recentLeads] = await Promise.all([
@@ -733,6 +733,32 @@ app.post('/api/projects/quick-quote', async (req: Request, res: Response) => {
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : String(error);
     res.status(400).json({ error: msg });
+  }
+});
+
+// Public PDF endpoint for demo quotes (no auth required)
+app.get('/api/quotes/:id/pdf/public', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    if (!isValidQuoteId(id)) {
+      res.status(400).json({ error: 'invalid id' });
+      return;
+    }
+    const orgId = await getDefaultOrganizationId();
+    const pdfBuffer = await generateQuotePDF(orgId, id);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="quote-${id}.pdf"`);
+    res.setHeader('Content-Length', pdfBuffer.length);
+    res.send(pdfBuffer);
+  } catch (error: unknown) {
+    const err = error as Error;
+    if (err.message?.includes('not found')) {
+      res.status(404).json({ error: err.message });
+    } else if (err.message?.includes('approved')) {
+      res.status(400).json({ error: err.message });
+    } else {
+      res.status(500).json({ error: err.message ?? 'Internal server error' });
+    }
   }
 });
 
