@@ -187,6 +187,10 @@ const corsOptions: cors.CorsOptions = {
   origin: (origin, cb) => {
     const allowed = config.corsAllowedOrigins;
     if (allowed.length === 0) {
+      if (config.node_env === 'production') {
+        cb(new Error('CORS_ORIGINS must be configured in production'));
+        return;
+      }
       cb(null, true);
       return;
     }
@@ -601,9 +605,11 @@ app.post(
       const { phone } = req.body;
       const organizationId = await getDefaultOrganizationId();
       const result = await createOTPChallenge(organizationId, phone);
+      if (config.node_env === 'development') {
+        console.log(`[DEV] OTP for ${phone}: ${result.otp}`);
+      }
       res.status(200).json({
         challenge_id: result.challenge_id,
-        otp: result.otp,
       });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Internal error';
@@ -3242,12 +3248,5 @@ app.use((err: unknown, _req: Request, res: Response, next: (err?: unknown) => vo
   }
   next(err);
 });
-
-// TEMP ROUTE DUMP (remove before final commit)
-const routerStack = (app as unknown as { _router?: { stack: unknown[] } })._router?.stack ?? [];
-const routeStrings = (routerStack as { route?: { path: string; methods: Record<string, boolean> } }[])
-  .filter((r) => r.route)
-  .map((r) => `${Object.keys(r.route!.methods).join(',')} ${r.route!.path}`);
-console.log('[routes]', routeStrings);
 
 export default app;
