@@ -27,7 +27,7 @@ export async function authenticateUser(
 }
 
 export function generateToken(user: UserPayload): AuthToken {
-  const token = jwt.sign(user, JWT_SECRET, {
+  const token = jwt.sign(user, JWT_SECRET!, {
     expiresIn: JWT_EXPIRY,
   });
   return { access_token: token };

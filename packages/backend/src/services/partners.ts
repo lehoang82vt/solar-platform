@@ -68,7 +68,7 @@ export async function loginPartner(
       role: 'PARTNER',
     };
 
-    const token = jwt.sign(payload, JWT_SECRET, { expiresIn: '7d' });
+    const token = jwt.sign(payload, JWT_SECRET!, { expiresIn: '7d' });
 
     return { token, partner };
   });
@@ -76,7 +76,7 @@ export async function loginPartner(
 
 export function verifyPartnerToken(token: string): PartnerJWT | null {
   try {
-    const decoded = jwt.verify(token, JWT_SECRET) as PartnerJWT;
+    const decoded = jwt.verify(token, JWT_SECRET!) as PartnerJWT;
     return decoded;
   } catch {
     return null;
