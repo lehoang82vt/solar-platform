@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { calculateLaborCost } from '../labor.ts';
+import { calculateLaborCost } from '../labor';
 
 test('test_fin03_1: fixed_labor_cost', () => {
   const result = calculateLaborCost({
