@@ -1,4 +1,3 @@
-import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import { withOrgContext } from '../config/database';
 
@@ -24,14 +23,8 @@ if (!JWT_SECRET || JWT_SECRET.length < 32) {
 }
 
 /**
- * Hash password (simplified - use bcrypt in production)
- */
-function hashPassword(password: string): string {
-  return crypto.createHash('sha256').update(password).digest('hex');
-}
-
-/**
  * Create user (for testing/seeding)
+ * Uses PostgreSQL crypt() with gen_salt('bf') for password hashing
  */
 export async function createUser(
   organizationId: string,
@@ -42,14 +35,12 @@ export async function createUser(
     role: 'ADMIN' | 'SALES';
   }
 ): Promise<User> {
-  const passwordHash = hashPassword(data.password);
-
   return await withOrgContext(organizationId, async (client) => {
     const result = await client.query(
       `INSERT INTO users (organization_id, email, password_hash, full_name, role, status)
-       VALUES ($1, $2, $3, $4, $5, 'ACTIVE')
+       VALUES ($1, $2, crypt($3, gen_salt('bf')), $4, $5, 'ACTIVE')
        RETURNING id, organization_id, email, full_name, role, status`,
-      [organizationId, data.email, passwordHash, data.full_name, data.role]
+      [organizationId, data.email, data.password, data.full_name, data.role]
     );
     return result.rows[0] as User;
   });
