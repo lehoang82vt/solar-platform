@@ -605,9 +605,8 @@ app.post(
       const { phone } = req.body;
       const organizationId = await getDefaultOrganizationId();
       const result = await createOTPChallenge(organizationId, phone);
-      if (config.node_env === 'development') {
-        console.log(`[DEV] OTP for ${phone}: ${result.otp}`);
-      }
+      // Note: In development, check database directly for OTP codes
+      // SELECT otp FROM otp_challenges WHERE phone = '+84...' ORDER BY created_at DESC LIMIT 1;
       res.status(200).json({
         challenge_id: result.challenge_id,
       });
