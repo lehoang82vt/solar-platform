@@ -21,8 +21,8 @@ module.exports = {
     {
       name: 'solar-frontend',
       cwd: '/var/www/solar/packages/frontend',
-      script: 'npm',
-      args: 'start -- -p 3001',
+      script: '/var/www/solar/node_modules/.bin/next',
+      args: 'start -p 3001',
       instances: 1,
       exec_mode: 'cluster',
       autorestart: true,
