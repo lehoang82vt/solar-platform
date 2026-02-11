@@ -41,10 +41,11 @@ export default function LoginPage() {
       // Store auth data
       setAuth(data.user, data.token);
 
-      // Redirect based on role
-      if (data.user.role === 'ADMIN') {
+      // Redirect based on role (case-insensitive)
+      const role = data.user.role?.toLowerCase();
+      if (role === 'admin' || role === 'super_admin') {
         router.push('/admin');
-      } else if (data.user.role === 'SALES') {
+      } else if (role === 'sales') {
         router.push('/sales');
       } else {
         router.push('/');

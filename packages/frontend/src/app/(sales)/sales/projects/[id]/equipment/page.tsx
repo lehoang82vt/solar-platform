@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { api } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
-import { ArrowLeft, Check, Minus, Plus, Cpu, Battery, Zap, Settings } from 'lucide-react';
+import { ArrowLeft, Check, Minus, Plus, Battery, Zap, Settings } from 'lucide-react';
 
 interface Recommendation {
   id: string;

@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { api } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
-import { ArrowLeft, Send, Download, FileText, ScrollText, Trash2 } from 'lucide-react';
+import { ArrowLeft, Send, Download, ScrollText, Trash2 } from 'lucide-react';
 
 interface LineItem {
   id: string;

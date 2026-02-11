@@ -5,8 +5,8 @@ interface User {
   id: string;
   email: string;
   full_name: string;
-  role: 'sales' | 'admin' | 'super_admin';
-  organization_id: string;
+  role: 'sales' | 'admin' | 'super_admin';  // lowercase to match database
+  organization_id?: string;
 }
 
 interface AuthState {
@@ -36,7 +36,11 @@ export const useAuthStore = create<AuthState>()(
         }
       },
       isAuthenticated: () => !!get().token,
-      hasRole: (role) => get().user?.role === role,
+      hasRole: (role) => {
+        const userRole = get().user?.role?.toLowerCase();
+        const checkRole = role.toLowerCase();
+        return userRole === checkRole;
+      },
     }),
     {
       name: 'auth-storage',
