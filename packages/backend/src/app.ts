@@ -251,7 +251,7 @@ app.post('/api/auth/login', async (req: Request, res: Response) => {
         id: result.user.id,
         email: result.user.email,
         full_name: result.user.full_name,
-        role: result.user.role,
+        role: result.user.role.toLowerCase(),
       },
     });
   } catch (error: unknown) {

@@ -17,9 +17,9 @@ export default function SalesLayout({
     if (!isAuthenticated()) {
       router.push('/login');
     } else if (
-      user?.role !== 'sales' &&
-      user?.role !== 'admin' &&
-      user?.role !== 'super_admin'
+      user?.role?.toLowerCase() !== 'sales' &&
+      user?.role?.toLowerCase() !== 'admin' &&
+      user?.role?.toLowerCase() !== 'super_admin'
     ) {
       router.push('/');
     }
