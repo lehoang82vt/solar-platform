@@ -615,7 +615,7 @@ export interface QuoteDetailV2 {
   status: string;
   price_total: number | null;
   created_at: string;
-  customer: { id: string; name: string; phone: string | null; email: string | null } | null;
+  customer: { id: string | null; name: string | null; phone: string | null; email: string | null } | null;
   project: { id: string; customer_name: string; address: string | null; status: string } | null;
   contract: { id: string; contract_number: string; status: string } | null;
   handover: { id: string; status: string } | null;
