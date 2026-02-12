@@ -316,7 +316,7 @@ export async function listProjectsV3(
     }
     if (filters?.search != null && filters.search.trim() !== '') {
       const likePattern = '%' + filters.search.trim() + '%';
-      // Search in projects.customer_name, projects.address, and quotes snapshot (via LATERAL qc)
+      // Search in projects.customer_name, projects.customer_address, and quotes snapshot (via LATERAL qc)
       conditions.push(
         `(p.customer_name ILIKE $${paramIndex} OR p.address ILIKE $${paramIndex} OR EXISTS (
           SELECT 1 FROM quotes q_search

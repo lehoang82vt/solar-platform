@@ -336,7 +336,7 @@ export async function listQuotesV2(
          quotes.customer_phone,
          quotes.customer_email
        FROM quotes
-       WHERE quotes.organization_id = (current_setting('app.current_org_id', true))::uuid
+       WHERE quotes.organization_id = $${paramIndex}
        ${whereClause}
        ORDER BY quotes.created_at DESC
        LIMIT $1
@@ -362,8 +362,8 @@ export async function listQuotesV2(
     }
     const countWhereClause = countConditions.length > 0 ? ' AND ' + countConditions.join(' AND ') : '';
     const countResult = await client.query(
-      `SELECT COUNT(*)::int FROM quotes WHERE quotes.organization_id = (current_setting('app.current_org_id', true))::uuid ${countWhereClause}`,
-      countParams.length > 0 ? countParams : undefined
+      `SELECT COUNT(*)::int FROM quotes WHERE quotes.organization_id = $1 ${countWhereClause}`,
+      [organizationId, ...countParams]
     );
     const count = parseInt(String(countResult.rows[0].count), 10);
 

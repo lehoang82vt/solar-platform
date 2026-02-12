@@ -532,7 +532,7 @@ export async function listContractsV2(
          contracts.created_at,
          projects.id as project_id,
          projects.customer_name,
-         projects.address
+         projects.customer_address as address
        FROM contracts
        JOIN projects ON contracts.project_id = projects.id
        ${whereClause}

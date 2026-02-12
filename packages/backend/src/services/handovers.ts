@@ -289,7 +289,7 @@ export async function listHandoversV2(
          handovers.created_at as updated_at,
          projects.id as project_id,
          projects.customer_name as project_customer_name,
-         projects.address as project_address,
+         projects.customer_address as project_address,
          projects.status as project_status,
          quotes.customer_name as customer_name,
          quotes.customer_phone as customer_phone,
