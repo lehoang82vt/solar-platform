@@ -305,9 +305,9 @@ export async function listHandoversV2(
       params
     );
 
-    const countParams: (string | number)[] = [];
-    const countConditions: string[] = [];
-    let countParamIndex = 1;
+    const countParams: (string | number)[] = [organizationId];
+    const countConditions: string[] = [`handovers.organization_id = $1`];
+    let countParamIndex = 2;
     if (filters?.status != null && filters.status.trim() !== '') {
       countConditions.push(`LOWER(TRIM(handovers.handover_type)) = LOWER(TRIM($${countParamIndex}))`);
       countParams.push(filters.status.trim());
@@ -330,8 +330,6 @@ export async function listHandoversV2(
       );
       countParams.push(likePattern);
     }
-    countConditions.unshift(`handovers.organization_id = $1`);
-    countParams.unshift(organizationId);
     const countAllConditions = countConditions;
     const countFrom = `FROM handovers
        LEFT JOIN contracts ON handovers.contract_id = contracts.id
