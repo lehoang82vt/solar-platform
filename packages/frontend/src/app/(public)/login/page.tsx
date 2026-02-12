@@ -22,7 +22,10 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      const response = await fetch(`${API_BASE_URL}/auth/login`, {
+      const loginUrl = `${API_BASE_URL}/auth/login`;
+      console.log('Login URL:', loginUrl); // Debug log
+      
+      const response = await fetch(loginUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -31,29 +34,42 @@ export default function LoginPage() {
       });
 
       const data = await response.json();
+      console.log('Login response:', { status: response.status, ok: response.ok, data }); // Debug log
 
       if (!response.ok) {
-        throw new Error(data.error || 'Login failed');
+        const errorMsg = data.error || `Login failed (${response.status})`;
+        console.error('Login error:', errorMsg);
+        throw new Error(errorMsg);
+      }
+
+      // Validate response data
+      if (!data.user || !data.token) {
+        console.error('Invalid login response:', data);
+        throw new Error('Invalid response from server');
       }
 
       // Store auth data
-      setAuth(data.user, data.token);
+      setAuth(data.user, data.token || data.access_token);
 
       // Wait a bit for state to persist, then redirect
-      // Use window.location for full page reload to ensure state hydration
       await new Promise(resolve => setTimeout(resolve, 200));
 
       // Redirect based on role (case-insensitive)
       const role = data.user.role?.toLowerCase();
+      console.log('User role:', role); // Debug log
+      
       if (role === 'admin' || role === 'super_admin') {
         window.location.href = '/admin';
       } else if (role === 'sales') {
         window.location.href = '/sales';
       } else {
+        console.warn('Unknown role, redirecting to home:', role);
         window.location.href = '/';
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Invalid email or password');
+      console.error('Login exception:', err);
+      const errorMessage = err instanceof Error ? err.message : 'Invalid email or password';
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
