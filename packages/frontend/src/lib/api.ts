@@ -2,18 +2,21 @@ import axios from 'axios';
 
 function normalizeApiOrigin(input: string): string {
   let s = (input || '').trim();
-  if (!s) return 'http://localhost:4000';
+  
+  // Empty string = use relative path (for production with reverse proxy)
+  if (!s) return '';
+  
   s = s.replace(/\/+$/, '');
   if (s.toLowerCase().endsWith('/api')) {
     s = s.slice(0, -4);
   }
-  return s || 'http://localhost:4000';
+  return s || '';
 }
 
-const API_ORIGIN = normalizeApiOrigin(process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000');
+const API_ORIGIN = normalizeApiOrigin(process.env.NEXT_PUBLIC_API_URL || '');
 
 export const api = axios.create({
-  baseURL: `${API_ORIGIN}/api`,
+  baseURL: API_ORIGIN ? `${API_ORIGIN}/api` : '/api',
   headers: {
     'Content-Type': 'application/json',
   },
