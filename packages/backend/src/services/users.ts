@@ -91,7 +91,7 @@ export async function loginUser(
       user_id: user.id,
       organization_id: user.organization_id,
       email: user.email,
-      role: user.role.toLowerCase(),
+      role: user.role.toLowerCase() as 'admin' | 'sales' | 'ADMIN' | 'SALES',
     };
 
     const token = jwt.sign(payload, JWT_SECRET!, { expiresIn: '7d' });
