@@ -277,7 +277,7 @@ export async function listProjectsV2(
   });
 }
 
-/** F-33: List projects v3 item (customer from quote payload->project_id + stats). */
+/** F-33: List projects v3 item (customer from quote project_id + stats). */
 export interface ProjectListV3Item {
   id: string;
   customer_name: string;
@@ -294,9 +294,9 @@ export interface ListProjectsV3Result {
 }
 
 /**
- * List projects v3: customer from quotes (payload->>'project_id') when present, stats counts.
- * Quotes joined via q.organization_id = p.organization_id AND (q.payload->>'project_id')::uuid = p.id (no project_id column on quotes).
- * If quotes payload has no project_id, quotes_count = 0; customer resolved only when at least one such quote exists.
+ * List projects v3: customer from quotes (project_id) when present, stats counts.
+ * Quotes joined via q.organization_id = p.organization_id AND q.project_id = p.id.
+ * If quotes have no project_id, quotes_count = 0; customer resolved only when at least one such quote exists.
  */
 export async function listProjectsV3(
   organizationId: string,
@@ -340,12 +340,12 @@ export async function listProjectsV3(
         COUNT(DISTINCT ctt.id)::int as contracts_count,
         COUNT(DISTINCT h.id)::int as handovers_count
       FROM projects p
-      LEFT JOIN quotes q ON q.organization_id = p.organization_id AND q.payload ? 'project_id' AND (q.payload->>'project_id')::uuid = p.id
+      LEFT JOIN quotes q ON q.organization_id = p.organization_id AND q.project_id = p.id
       LEFT JOIN contracts ctt ON ctt.project_id = p.id
       LEFT JOIN handovers h ON h.project_id = p.id
       LEFT JOIN LATERAL (
         SELECT q2.customer_id FROM quotes q2
-        WHERE q2.organization_id = p.organization_id AND q2.payload ? 'project_id' AND (q2.payload->>'project_id')::uuid = p.id
+        WHERE q2.organization_id = p.organization_id AND q2.project_id = p.id
         ORDER BY q2.id LIMIT 1
       ) qc ON true
       LEFT JOIN customers cu ON cu.id = qc.customer_id
@@ -360,7 +360,7 @@ export async function listProjectsV3(
       FROM projects p
       LEFT JOIN LATERAL (
         SELECT q2.customer_id FROM quotes q2
-        WHERE q2.organization_id = p.organization_id AND q2.payload ? 'project_id' AND (q2.payload->>'project_id')::uuid = p.id
+        WHERE q2.organization_id = p.organization_id AND q2.project_id = p.id
         ORDER BY q2.id LIMIT 1
       ) qc ON true
       LEFT JOIN customers cu ON cu.id = qc.customer_id
@@ -499,7 +499,7 @@ export async function recomputeProjectStatus(
       [projectId]
     );
     const quotes = await client.query(
-      `SELECT status, payload FROM quotes WHERE organization_id = $1 AND payload->>'project_id' = $2`,
+      `SELECT status FROM quotes WHERE organization_id = $1 AND project_id = $2`,
       [organizationId, projectId]
     );
 
