@@ -1,0 +1,53 @@
+# ============================================
+# CADDY CONFIGURATION BLOCK FOR SOLAR
+# ============================================
+# Thêm block này vào file Caddyfile hiện tại của bạn
+# Location: /home/lehoang/hybrid-stack/Caddyfile
+#
+# Chú ý:
+# - Backend Solar chạy trên port 4000 (tránh xung đột với AdGuard:3000)
+# - Frontend Solar chạy trên port 3001
+# - Không cần cài Nginx riêng, dùng luôn Caddy đang có
+# ============================================
+
+# Solar - VPS Management Platform
+solar.tinhoclehoang.com {
+    # API routes - proxy to backend (port 4000)
+    route /api* {
+        reverse_proxy host.docker.internal:4000 {
+            header_up Host {host}
+            header_up X-Real-IP {remote_host}
+            header_up X-Forwarded-For {remote_host}
+            header_up X-Forwarded-Proto {scheme}
+        }
+    }
+
+    # Frontend - proxy to Next.js (port 3001)
+    route {
+        reverse_proxy host.docker.internal:3001 {
+            header_up Host {host}
+            header_up X-Real-IP {remote_host}
+            header_up X-Forwarded-For {remote_host}
+            header_up X-Forwarded-Proto {scheme}
+        }
+    }
+
+    # Logging
+    log {
+        output file /var/log/caddy/solar-access.log
+        format json
+    }
+
+    # Security headers
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "SAMEORIGIN"
+        X-XSS-Protection "1; mode=block"
+    }
+
+    # Max upload size
+    request_body {
+        max_size 100MB
+    }
+}

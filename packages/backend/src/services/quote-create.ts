@@ -108,7 +108,21 @@ export async function createQuote(
     const battery_cost = battery
       ? Number(battery.sell_price_vnd) * batteryCount
       : 0;
-    const accessories_cost = 0; // TODO: calculate from accessories array
+
+    // Calculate accessories cost
+    let accessories_cost = 0;
+    if (config.accessories && Array.isArray(config.accessories) && config.accessories.length > 0) {
+      for (const acc of config.accessories) {
+        const accessoryResult = await client.query(
+          `SELECT sell_price_vnd FROM catalog_accessories WHERE id = $1 AND organization_id = $2`,
+          [acc.accessory_id, organizationId]
+        );
+        if (accessoryResult.rows.length > 0) {
+          const accessory = accessoryResult.rows[0];
+          accessories_cost += Number(accessory.sell_price_vnd) * Number(acc.quantity);
+        }
+      }
+    }
 
     // Get financial config for labor
     const finConfig = await getFinancialConfig(organizationId);

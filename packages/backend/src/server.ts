@@ -8,7 +8,7 @@ async function startServer(): Promise<void> {
     validateEnv();
     await connectDatabase();
     
-    app.listen(config.port, '0.0.0.0', () => {
+    app.listen(config.port, () => {
       console.log(`Server running on http://0.0.0.0:${config.port}`);
       console.log(`Health check: http://0.0.0.0:${config.port}/api/health`);
     });

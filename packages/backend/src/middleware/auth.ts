@@ -30,13 +30,14 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
   next();
 }
 
-/** Requires requireAuth first; returns 403 if user.role !== 'admin'. */
+/** Requires requireAuth first; returns 403 if user.role is not 'admin' or 'super_admin'. */
 export function requireAdmin(req: Request, res: Response, next: NextFunction): void {
   if (!req.user) {
     res.status(401).json({ error: 'Unauthorized' });
     return;
   }
-  if ((req.user.role || '').toLowerCase() !== 'admin') {
+  const role = (req.user.role || '').toLowerCase();
+  if (role !== 'admin' && role !== 'super_admin') {
     res.status(403).json({ error: 'Forbidden' });
     return;
   }

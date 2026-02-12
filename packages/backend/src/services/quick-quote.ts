@@ -18,6 +18,7 @@ export interface QuickQuoteInput {
 
 export interface QuickQuoteResult {
   project_id: string;
+  quote_id: string;
   is_demo: true;
   expires_at: string;
   system_config: SystemConfig;
@@ -153,13 +154,67 @@ export async function createQuickQuote(
       estimatedCost += Number(batResult.rows[0]?.sell_price_vnd ?? 0);
     }
 
+    // Auto-create quote for demo project
+    const customerName = input.customer_name || `Customer ${phone}`;
+
+    // Calculate system size (kWp)
+    let systemSizeKwp = 0;
+    if (config.pv_module_id && config.panel_count) {
+      const pvResult = await client.query(
+        `SELECT power_watt FROM catalog_pv_modules WHERE id = $1`,
+        [config.pv_module_id]
+      );
+      if (pvResult.rows[0]) {
+        const powerW = Number(pvResult.rows[0].power_watt) || 0;
+        systemSizeKwp = (powerW * config.panel_count) / 1000;
+      }
+    }
+
+    // Generate quote number
+    const timestamp = Date.now().toString(36).toUpperCase();
+    const random = Math.random().toString(36).substring(2, 5).toUpperCase();
+    const quoteNumber = `Q-${timestamp}-${random}`;
+
+    // Validity: 30 days from now
+    const validUntil = new Date();
+    validUntil.setDate(validUntil.getDate() + 30);
+
+    const quoteInsertResult = await client.query(
+      `INSERT INTO quotes (
+        organization_id, project_id, quote_number, status,
+        customer_name, system_size_kwp, panel_count,
+        subtotal_vnd, total_vnd, valid_until, approved_at
+       )
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
+       RETURNING id`,
+      [
+        organizationId,
+        project.id,
+        quoteNumber,
+        'APPROVED',
+        customerName,
+        systemSizeKwp,
+        config.panel_count || 0,
+        Math.round(estimatedCost),
+        Math.round(estimatedCost),
+        validUntil,
+      ]
+    );
+
+    if (!quoteInsertResult.rows[0]) {
+      throw new Error('Failed to create quote');
+    }
+
+    const quoteId = quoteInsertResult.rows[0].id;
+
     const elapsedMs = Date.now() - startTime;
     if (process.env.NODE_ENV !== 'test') {
-      console.log(`Quick quote created in ${elapsedMs}ms`);
+      console.log(`Quick quote created in ${elapsedMs}ms (project: ${project.id}, quote: ${quoteId})`);
     }
 
     return {
       project_id: project.id,
+      quote_id: quoteId,
       is_demo: true,
       expires_at: expiresAt.toISOString(),
       system_config: config,

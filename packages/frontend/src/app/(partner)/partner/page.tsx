@@ -23,7 +23,7 @@ export default function PartnerDashboard() {
 
   const loadDashboard = async () => {
     try {
-      const { data } = await api.get<PartnerDashboard>('/api/partner/dashboard');
+      const { data } = await api.get<PartnerDashboard>('/partner/dashboard');
       setDashboard(data);
     } catch (error) {
       // 401 when not partner auth - show placeholder

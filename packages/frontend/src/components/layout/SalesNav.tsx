@@ -11,6 +11,9 @@ import {
   Users,
   FileText,
   ClipboardList,
+  ScrollText,
+  Package,
+  Settings,
   LogOut,
 } from 'lucide-react';
 
@@ -19,6 +22,9 @@ const navItems = [
   { href: '/sales/leads', label: 'Leads', icon: Users },
   { href: '/sales/projects', label: 'Dự án', icon: ClipboardList },
   { href: '/sales/quotes', label: 'Báo giá', icon: FileText },
+  { href: '/sales/contracts', label: 'Hợp đồng', icon: ScrollText },
+  { href: '/sales/handovers', label: 'Bàn giao', icon: Package },
+  { href: '/sales/settings', label: 'Cài đặt', icon: Settings },
 ];
 
 const mobileNavItems = navItems.map(({ href, label }) => ({ href, label }));
@@ -55,7 +61,9 @@ export default function SalesNav() {
       <nav className="flex-1 p-4 space-y-2">
         {navItems.map((item) => {
           const Icon = item.icon;
-          const isActive = pathname === item.href;
+          const isActive = item.href === '/sales'
+            ? pathname === '/sales'
+            : pathname.startsWith(item.href);
 
           return (
             <Link

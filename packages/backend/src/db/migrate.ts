@@ -67,13 +67,20 @@ async function applyMigration(
     await client.query('BEGIN');
     
     // Set app settings for migrations that need environment variables
+    const adminEmail = process.env.ADMIN_EMAIL;
+    const adminPassword = process.env.ADMIN_PASSWORD;
+
+    if (!adminEmail || !adminPassword) {
+      throw new Error('ADMIN_EMAIL and ADMIN_PASSWORD must be set in environment variables for migrations');
+    }
+
     await client.query(
       `SELECT set_config('app.admin_email', $1, false)`,
-      [process.env.ADMIN_EMAIL || 'admin@solar.local']
+      [adminEmail]
     );
     await client.query(
       `SELECT set_config('app.admin_password', $1, false)`,
-      [process.env.ADMIN_PASSWORD || 'AdminPassword123']
+      [adminPassword]
     );
     
     await client.query(content);

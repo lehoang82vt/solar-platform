@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
   calculateFinancial,
   createFinancialSnapshot,
-} from '../financial.ts';
+} from '../financial';
 
 const baseInput = {
   pv_cost: 60000000,

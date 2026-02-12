@@ -2,7 +2,7 @@ import express, { Express, Request, Response } from 'express';
 import helmet from 'helmet';
 import cors from 'cors';
 import { config } from './config/env';
-import { isDatabaseConnected } from './config/database';
+import { isDatabaseConnected, getDatabasePool } from './config/database';
 import { version } from '../../shared/src';
 import { calculateLiteAnalysis } from '../../shared/src/utils/lite-analysis';
 import { loginUser } from './services/users';
@@ -187,6 +187,10 @@ const corsOptions: cors.CorsOptions = {
   origin: (origin, cb) => {
     const allowed = config.corsAllowedOrigins;
     if (allowed.length === 0) {
+      if (config.node_env === 'production') {
+        cb(new Error('CORS_ORIGINS must be configured in production'));
+        return;
+      }
       cb(null, true);
       return;
     }
@@ -247,7 +251,7 @@ app.post('/api/auth/login', async (req: Request, res: Response) => {
         id: result.user.id,
         email: result.user.email,
         full_name: result.user.full_name,
-        role: result.user.role,
+        role: result.user.role.toLowerCase(),
       },
     });
   } catch (error: unknown) {
@@ -265,8 +269,60 @@ app.get('/api/me', requireAuth, (req: Request, res: Response) => {
   res.json(req.user);
 });
 
+// Change password
+app.post('/api/auth/change-password', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const { oldPassword, newPassword } = req.body;
+    const userId = req.user?.id;
+
+    if (!oldPassword || !newPassword) {
+      res.status(400).json({ error: 'Mật khẩu cũ và mật khẩu mới là bắt buộc' });
+      return;
+    }
+
+    if (!userId) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+
+    if (newPassword.length < 8) {
+      res.status(400).json({ error: 'Mật khẩu mới phải có ít nhất 8 ký tự' });
+      return;
+    }
+
+    const pool = getDatabasePool();
+    if (!pool) {
+      res.status(500).json({ error: 'Database not connected' });
+      return;
+    }
+
+    // Verify old password using crypt
+    const verifyResult = await pool.query(
+      'SELECT (password_hash = crypt($1, password_hash)) AS valid FROM users WHERE id = $2',
+      [oldPassword, userId]
+    );
+
+    if (!verifyResult.rows[0]?.valid) {
+      res.status(401).json({ error: 'Mật khẩu hiện tại không đúng' });
+      return;
+    }
+
+    // Update password with new hash
+    await pool.query(
+      'UPDATE users SET password_hash = crypt($1, gen_salt($2)) WHERE id = $3',
+      [newPassword, 'bf', userId]
+    );
+
+    res.status(200).json({ message: 'Đổi mật khẩu thành công' });
+  } catch (error: unknown) {
+    console.error('Change password error:', error);
+    const message = error instanceof Error ? error.message : 'Internal server error';
+    res.status(500).json({ error: message });
+  }
+});
+
 // Sales dashboard (Day 82)
-app.get('/api/sales/dashboard', requireAuth, async (req: Request, res: Response) => {
+app.get('/api/sales/dashboard', requireAuth, async (_req: Request, res: Response) => {
   try {
     const organizationId = await getDefaultOrganizationId();
     const [stats, recentLeads] = await Promise.all([
@@ -601,9 +657,10 @@ app.post(
       const { phone } = req.body;
       const organizationId = await getDefaultOrganizationId();
       const result = await createOTPChallenge(organizationId, phone);
+      // Note: In development, check database directly for OTP codes
+      // SELECT otp FROM otp_challenges WHERE phone = '+84...' ORDER BY created_at DESC LIMIT 1;
       res.status(200).json({
         challenge_id: result.challenge_id,
-        otp: result.otp,
       });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Internal error';
@@ -727,6 +784,32 @@ app.post('/api/projects/quick-quote', async (req: Request, res: Response) => {
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : String(error);
     res.status(400).json({ error: msg });
+  }
+});
+
+// Public PDF endpoint for demo quotes (no auth required)
+app.get('/api/quotes/:id/pdf/public', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    if (!isValidQuoteId(id)) {
+      res.status(400).json({ error: 'invalid id' });
+      return;
+    }
+    const orgId = await getDefaultOrganizationId();
+    const pdfBuffer = await generateQuotePDF(orgId, id);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="quote-${id}.pdf"`);
+    res.setHeader('Content-Length', pdfBuffer.length);
+    res.send(pdfBuffer);
+  } catch (error: unknown) {
+    const err = error as Error;
+    if (err.message?.includes('not found')) {
+      res.status(404).json({ error: err.message });
+    } else if (err.message?.includes('approved')) {
+      res.status(400).json({ error: err.message });
+    } else {
+      res.status(500).json({ error: err.message ?? 'Internal server error' });
+    }
   }
 });
 
@@ -2491,7 +2574,10 @@ app.post('/api/quotes', requireAuth, async (req: Request, res: Response) => {
         return;
       }
 
-      const result = await createQuoteFromProject(organizationId, { project_id, title });
+      const result = await createQuoteFromProject(organizationId, {
+        project_id,
+        title: title as string | undefined
+      });
 
       if (result.kind === 'project_not_found') {
         await auditLogWrite({
@@ -3242,12 +3328,5 @@ app.use((err: unknown, _req: Request, res: Response, next: (err?: unknown) => vo
   }
   next(err);
 });
-
-// TEMP ROUTE DUMP (remove before final commit)
-const routerStack = (app as unknown as { _router?: { stack: unknown[] } })._router?.stack ?? [];
-const routeStrings = (routerStack as { route?: { path: string; methods: Record<string, boolean> } }[])
-  .filter((r) => r.route)
-  .map((r) => `${Object.keys(r.route!.methods).join(',')} ${r.route!.path}`);
-console.log('[routes]', routeStrings);
 
 export default app;
