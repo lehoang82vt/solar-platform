@@ -316,7 +316,6 @@ export async function listHandoversV2(
       project_customer_name: string;
       project_address: string | null;
       project_status: string;
-      customer_id: string | null;
       customer_name: string | null;
       customer_phone: string | null;
       customer_email: string | null;
@@ -335,9 +334,9 @@ export async function listHandoversV2(
         status: row.project_status ?? 'NEW',
       },
       customer:
-        row.customer_id != null && row.customer_name != null
+        row.customer_name != null
           ? {
-              id: row.customer_id,
+              id: null, // Quotes v2 schema doesn't have customer_id, only snapshot
               name: row.customer_name,
               phone: row.customer_phone,
               email: row.customer_email,
