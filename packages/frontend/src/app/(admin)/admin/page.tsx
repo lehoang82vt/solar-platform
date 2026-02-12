@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useAuthStore } from '@/stores/authStore';
+import { API_BASE_URL } from '@/lib/constants';
 
 interface BIOverview {
   totalLeads: number;
@@ -23,8 +24,7 @@ export default function AdminDashboardPage() {
   useEffect(() => {
     const fetchOverview = async () => {
       try {
-        const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
-        const response = await fetch(`${apiUrl}/api/bi/overview`, {
+        const response = await fetch(`${API_BASE_URL}/bi/overview`, {
           headers: {
             'Authorization': `Bearer ${token}`,
           },

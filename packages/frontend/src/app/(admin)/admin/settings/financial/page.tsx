@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { useAuthStore } from '@/stores/authStore';
+import { API_BASE_URL } from '@/lib/constants';
 import { DollarSign, TrendingUp, AlertTriangle } from 'lucide-react';
 
 interface FinancialConfig {
@@ -58,8 +59,7 @@ export default function FinancialConfigPage() {
 
   const loadConfig = async () => {
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
-      const response = await fetch(`${apiUrl}/api/financial/config`, {
+      const response = await fetch(`${API_BASE_URL}/financial/config`, {
         headers: {
           'Authorization': `Bearer ${token}`,
         },
@@ -83,8 +83,7 @@ export default function FinancialConfigPage() {
     setSaving(true);
 
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
-      const response = await fetch(`${apiUrl}/api/financial/config`, {
+      const response = await fetch(`${API_BASE_URL}/financial/config`, {
         method: config.id ? 'PUT' : 'POST',
         headers: {
           'Content-Type': 'application/json',

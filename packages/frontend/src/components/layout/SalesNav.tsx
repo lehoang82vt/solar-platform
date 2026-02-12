@@ -13,6 +13,7 @@ import {
   ClipboardList,
   ScrollText,
   Package,
+  Settings,
   LogOut,
 } from 'lucide-react';
 
@@ -23,6 +24,7 @@ const navItems = [
   { href: '/sales/quotes', label: 'Báo giá', icon: FileText },
   { href: '/sales/contracts', label: 'Hợp đồng', icon: ScrollText },
   { href: '/sales/handovers', label: 'Bàn giao', icon: Package },
+  { href: '/sales/settings', label: 'Cài đặt', icon: Settings },
 ];
 
 const mobileNavItems = navItems.map(({ href, label }) => ({ href, label }));

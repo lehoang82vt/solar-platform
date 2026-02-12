@@ -1,9 +1,19 @@
 import axios from 'axios';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+function normalizeApiOrigin(input: string): string {
+  let s = (input || '').trim();
+  if (!s) return 'http://localhost:4000';
+  s = s.replace(/\/+$/, '');
+  if (s.toLowerCase().endsWith('/api')) {
+    s = s.slice(0, -4);
+  }
+  return s || 'http://localhost:4000';
+}
+
+const API_ORIGIN = normalizeApiOrigin(process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000');
 
 export const api = axios.create({
-  baseURL: `${API_URL}/api`,
+  baseURL: `${API_ORIGIN}/api`,
   headers: {
     'Content-Type': 'application/json',
   },
