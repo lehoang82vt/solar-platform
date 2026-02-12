@@ -14,7 +14,7 @@ export interface UserJWT {
   user_id: string;
   organization_id: string;
   email: string;
-  role: 'admin' | 'sales' | 'ADMIN' | 'SALES'; // Support both cases for compatibility
+  role: 'ADMIN' | 'SALES';
 }
 
 const JWT_SECRET = process.env.JWT_SECRET;
@@ -91,7 +91,7 @@ export async function loginUser(
       user_id: user.id,
       organization_id: user.organization_id,
       email: user.email,
-      role: user.role.toLowerCase() as 'admin' | 'sales' | 'ADMIN' | 'SALES',
+      role: user.role, // Keep as-is from database (ADMIN or SALES)
     };
 
     const token = jwt.sign(payload, JWT_SECRET!, { expiresIn: '7d' });
