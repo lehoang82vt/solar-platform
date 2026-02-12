@@ -685,8 +685,12 @@ export async function getQuoteDetailV2(
 
     let handover: { id: string; status: string } | null = null;
     if (projectId) {
+      // Schema 038: handovers doesn't have project_id, get via contract
       const hoResult = await client.query(
-        `SELECT id, status FROM handovers WHERE project_id = $1 ORDER BY created_at DESC LIMIT 1`,
+        `SELECT h.id, h.handover_type as status 
+         FROM handovers h
+         JOIN contracts c ON h.contract_id = c.id
+         WHERE c.project_id = $1 ORDER BY h.created_at DESC LIMIT 1`,
         [projectId]
       );
       if (hoResult.rows.length > 0) {
@@ -696,12 +700,12 @@ export async function getQuoteDetailV2(
     }
 
     const customer =
-      q.cu_id != null && q.cu_name != null
+      q.customer_name != null
         ? {
-            id: q.cu_id,
-            name: q.cu_name,
-            phone: q.cu_phone,
-            email: q.cu_email,
+            id: null, // Schema 034: quotes doesn't have customer_id, only snapshot
+            name: q.customer_name,
+            phone: q.customer_phone,
+            email: q.customer_email,
           }
         : null;
 
