@@ -38,11 +38,20 @@ export default function LoginPage() {
         throw new Error(data.error || 'Login failed');
       }
 
+      // Get token from response (support both token and access_token)
+      const token = data.token || data.access_token;
+      if (!token) {
+        throw new Error('No token received from server');
+      }
+
       // Store auth data
-      setAuth(data.user, data.token);
+      setAuth(data.user, token);
+
+      // Wait a bit for zustand persist to save to localStorage
+      await new Promise(resolve => setTimeout(resolve, 100));
 
       // Redirect based on role (case-insensitive)
-      const role = data.user.role?.toLowerCase();
+      const role = data.user?.role?.toLowerCase();
       if (role === 'admin' || role === 'super_admin') {
         router.push('/admin');
       } else if (role === 'sales') {
