@@ -727,7 +727,7 @@ export async function getQuoteDetailV2(
       project,
       contract,
       handover,
-      payload: payload as QuotePayload,
+      payload: {} as QuotePayload, // Schema 034: quotes doesn't have payload
     };
 
     return {
