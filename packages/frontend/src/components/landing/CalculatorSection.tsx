@@ -5,248 +5,318 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { api } from '@/lib/api';
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import { Calculator, MapPin, Info, CheckCircle, ArrowRight } from 'lucide-react';
+  Calculator, MapPin, Home, Store, Zap, TrendingDown,
+  Loader2, Info, ChevronRight,
+} from 'lucide-react';
+import {
+  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, LabelList,
+} from 'recharts';
 
-interface CalcResult {
-  kwp: number;
-  cost: number;
-  savings: number;
-  payback: number;
+interface AnalysisResult {
+  suggested_kwp: number;
+  est_kwh_month: number;
+  est_saving_vnd_month: number;
+  est_kwh_year: number;
+  est_saving_vnd_year: number;
+  est_system_cost: number;
+  est_payback_years: number;
+  monthly_bill_after: number;
+  disclaimer: string;
 }
 
-export default function CalculatorSection() {
-  const [monthlyKwh, setMonthlyKwh] = useState('500');
-  const [region, setRegion] = useState('south');
-  const [result, setResult] = useState<CalcResult | null>(null);
+const BILL_SUGGESTIONS = [
+  { label: '~1 triệu', value: 1_000_000 },
+  { label: '2-3 triệu', value: 2_500_000 },
+  { label: '~5 triệu', value: 5_000_000 },
+  { label: 'Trên 8 triệu', value: 8_000_000 },
+];
 
-  const calculate = () => {
-    const kwh = parseInt(monthlyKwh, 10) || 0;
-    const kwp = Math.ceil(kwh / 150 / 0.5) * 0.5;
-    const cost = kwp * 15000000;
-    const savings = kwh * 2000 * 12;
+const REGIONS = [
+  { value: 'NORTH', label: 'Miền Bắc', emoji: '🌤' },
+  { value: 'CENTRAL', label: 'Miền Trung', emoji: '☀️' },
+  { value: 'SOUTH', label: 'Miền Nam', emoji: '🌞' },
+];
 
-    setResult({
-      kwp,
-      cost,
-      savings,
-      payback: savings > 0 ? Math.ceil(cost / savings) : 0,
-    });
+function formatVnd(amount: number): string {
+  if (amount >= 1_000_000) {
+    return `${(amount / 1_000_000).toFixed(1).replace('.0', '')} triệu`;
+  }
+  return amount.toLocaleString('vi-VN');
+}
+
+interface LiteAnalysisProps {
+  onResult?: (result: AnalysisResult, billVnd: number) => void;
+}
+
+export default function CalculatorSection({ onResult }: LiteAnalysisProps) {
+  const [billVnd, setBillVnd] = useState('');
+  const [region, setRegion] = useState('SOUTH');
+  const [customerType, setCustomerType] = useState<'residential' | 'business'>('residential');
+  const [result, setResult] = useState<AnalysisResult | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const billNumber = parseInt(billVnd.replace(/\D/g, ''), 10) || 0;
+
+  const handleSuggestionClick = (value: number) => {
+    setBillVnd(value.toLocaleString('vi-VN'));
+  };
+
+  const handleBillChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const raw = e.target.value.replace(/\D/g, '');
+    if (raw) {
+      setBillVnd(parseInt(raw, 10).toLocaleString('vi-VN'));
+    } else {
+      setBillVnd('');
+    }
+  };
+
+  const handleCalculate = async () => {
+    if (billNumber < 100_000) {
+      setError('Vui lòng nhập số tiền điện hàng tháng (tối thiểu 100,000 VNĐ)');
+      return;
+    }
+    setError('');
+    setLoading(true);
+    try {
+      const { data } = await api.post<AnalysisResult>('/api/public/lite-analysis', {
+        monthly_bill_vnd: billNumber,
+        region,
+      });
+      setResult(data);
+      onResult?.(data, billNumber);
+      // Scroll to results
+      setTimeout(() => {
+        document.getElementById('calc-results')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 100);
+    } catch {
+      setError('Không thể tính toán. Vui lòng thử lại.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const chartData = result ? [
+    { name: 'Hiện tại', value: billNumber, fill: '#ef4444' },
+    { name: 'Sau lắp ĐMT', value: result.monthly_bill_after, fill: '#22c55e' },
+  ] : [];
+
+  const scrollToContact = () => {
+    document.getElementById('contact')?.scrollIntoView({ behavior: 'smooth' });
   };
 
   return (
-    <section id="calculator" className="relative py-20">
-      <div className="absolute inset-0 bg-white bg-grid-pattern" aria-hidden />
-
-      <div className="container mx-auto px-4 relative z-10">
-        <div className="max-w-2xl mx-auto">
-          <div className="text-center mb-8">
-            <div className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-sky-50 to-blue-50 border border-sky-200 rounded-full mb-4">
-              <Calculator className="w-5 h-5 text-sky-600 shrink-0" />
-              <span className="text-sm font-medium text-sky-700">Công cụ tính toán tự động</span>
-            </div>
-
-            <h2 className="text-3xl font-bold text-slate-900 mb-4">Tính toán hệ thống phù hợp</h2>
-            <p className="text-slate-600">
-              Nhập thông tin để nhận báo giá miễn phí trong{' '}
-              <span className="font-semibold text-sky-600">30 giây</span>
-            </p>
+    <section id="calculator" className="py-20 bg-white">
+      <div className="max-w-4xl mx-auto px-6">
+        {/* Section header */}
+        <div className="text-center mb-12">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-50 text-amber-700 text-sm mb-4">
+            <Calculator className="w-4 h-4" />
+            Chỉ mất 30 giây
           </div>
-
-          {/* Calculator Card */}
-          <div className="group relative">
-            <div
-              className="absolute -inset-1 bg-gradient-to-r from-sky-300 via-blue-300 to-cyan-300 rounded-2xl blur-xl opacity-20 group-hover:opacity-30 transition"
-              aria-hidden
-            />
-
-            <Card className="relative glass p-8 rounded-2xl border-2 border-white/50 shadow-2xl">
-              <div className="space-y-6">
-                <div className="relative">
-                  <Label
-                    htmlFor="kwh"
-                    className="flex items-center gap-2 text-sm font-semibold text-slate-700 mb-2"
-                  >
-                    <svg
-                      className="w-5 h-5 text-sky-600 shrink-0"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                      aria-hidden
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth="2"
-                        d="M13 10V3L4 14h7v7l9-11h-7z"
-                      />
-                    </svg>
-                    Tiêu thụ điện hàng tháng (kWh)
-                  </Label>
-                  <div className="relative">
-                    <Input
-                      id="kwh"
-                      type="number"
-                      value={monthlyKwh}
-                      onChange={(e) => setMonthlyKwh(e.target.value)}
-                      className="glass border-2 border-slate-200 focus:border-sky-500 text-lg font-semibold pr-16 h-14 rounded-xl"
-                      placeholder="VD: 500"
-                    />
-                    <div className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 font-medium">
-                      kWh
-                    </div>
-                  </div>
-                  <div className="mt-2 flex items-center gap-2 text-sm text-slate-500">
-                    <Info className="w-4 h-4 shrink-0" />
-                    Xem trên hóa đơn điện của bạn
-                  </div>
-                </div>
-
-                <div>
-                  <Label
-                    htmlFor="region"
-                    className="flex items-center gap-2 text-sm font-semibold text-slate-700 mb-2"
-                  >
-                    <MapPin className="w-5 h-5 text-sky-600 shrink-0" />
-                    Khu vực
-                  </Label>
-                  <Select value={region} onValueChange={setRegion}>
-                    <SelectTrigger
-                      id="region"
-                      className="glass border-2 border-slate-200 h-14 rounded-xl text-lg"
-                    >
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="north">🏔️ Miền Bắc</SelectItem>
-                      <SelectItem value="central">🏖️ Miền Trung</SelectItem>
-                      <SelectItem value="south">☀️ Miền Nam</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <Button
-                  onClick={calculate}
-                  className="group/btn w-full h-14 bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 hover:from-amber-600 hover:via-orange-600 hover:to-amber-700 text-white font-bold text-lg rounded-xl shadow-lg shadow-amber-300/50 pulse-glow border-0"
-                >
-                  <span className="flex items-center gap-3">
-                    <Calculator className="w-6 h-6 shrink-0" />
-                    Tính toán hệ thống phù hợp
-                    <ArrowRight className="w-5 h-5 shrink-0 group-hover/btn:translate-x-1 transition-transform" />
-                  </span>
-                </Button>
-              </div>
-
-              {/* Result */}
-              {result && (
-                <div className="mt-8 relative">
-                  <div
-                    className="absolute -inset-2 bg-gradient-to-br from-sky-200 to-blue-200 rounded-2xl blur-xl opacity-30"
-                    aria-hidden
-                  />
-
-                  <div className="relative p-6 bg-gradient-to-br from-sky-50 via-blue-50 to-cyan-50 rounded-2xl border-2 border-sky-200/50">
-                    <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
-                      <h3 className="font-bold text-lg flex items-center gap-2">
-                        <CheckCircle className="w-6 h-6 text-sky-600 shrink-0" />
-                        Kết quả ước tính
-                      </h3>
-                      <span className="px-3 py-1 bg-green-100 text-green-700 text-xs font-bold rounded-full">
-                        Chính xác cao
-                      </span>
-                    </div>
-
-                    <div className="space-y-4">
-                      <div className="flex justify-between p-3 glass rounded-lg">
-                        <span className="text-slate-600 font-medium">Công suất hệ thống</span>
-                        <span className="font-bold text-slate-900 text-xl">{result.kwp} kWp</span>
-                      </div>
-
-                      <div className="flex justify-between p-3 glass rounded-lg">
-                        <span className="text-slate-600 font-medium">Chi phí dự kiến</span>
-                        <span className="font-bold text-sky-600 text-xl">
-                          {result.cost.toLocaleString('vi-VN')} ₫
-                        </span>
-                      </div>
-
-                      <div className="relative p-4 glass rounded-lg border-2 border-green-200">
-                        <div className="flex flex-wrap justify-between items-center gap-2">
-                          <span className="text-slate-600 font-medium">Tiết kiệm hàng năm</span>
-                          <div className="text-right">
-                            <div className="font-bold text-green-600 text-2xl">
-                              {result.savings.toLocaleString('vi-VN')} ₫
-                            </div>
-                            <div className="text-xs text-green-600 font-medium">↑ Tiết kiệm 90%</div>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="flex justify-between p-3 glass rounded-lg">
-                        <span className="text-slate-600 font-medium">Hoàn vốn sau</span>
-                        <span className="font-bold text-slate-900 text-xl">~{result.payback} năm</span>
-                      </div>
-                    </div>
-
-                    <Button className="w-full mt-6 h-12 bg-gradient-to-r from-sky-600 to-blue-700 hover:from-sky-700 hover:to-blue-800 border-0">
-                      <span className="flex items-center gap-2">
-                        Nhận báo giá chi tiết
-                        <ArrowRight className="w-5 h-5 shrink-0" />
-                      </span>
-                    </Button>
-                  </div>
-                </div>
-              )}
-            </Card>
-          </div>
-
-          {/* Trust indicators */}
-          <div className="mt-8 flex flex-wrap items-center justify-center gap-6 sm:gap-8 text-sm text-slate-500">
-            <div className="flex items-center gap-2">
-              <CheckCircle className="w-5 h-5 text-green-600 shrink-0" />
-              <span className="font-medium">Bảo mật tuyệt đối</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <svg
-                className="w-5 h-5 text-sky-600 shrink-0"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-                aria-hidden
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth="2"
-                  d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
-                />
-              </svg>
-              <span className="font-medium">Phản hồi {'<'} 30s</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <svg
-                className="w-5 h-5 text-amber-600 shrink-0"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-                aria-hidden
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth="2"
-                  d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                />
-              </svg>
-              <span className="font-medium">Miễn phí 100%</span>
-            </div>
-          </div>
+          <h2 className="text-3xl sm:text-4xl font-bold text-gray-900 mb-3">
+            Ước tính tiết kiệm cho gia đình bạn
+          </h2>
+          <p className="text-gray-500 max-w-xl mx-auto">
+            Nhập tiền điện hàng tháng để xem hệ thống điện mặt trời có thể giúp bạn tiết kiệm bao nhiêu.
+          </p>
         </div>
+
+        {/* Input Form */}
+        <Card className="p-6 sm:p-8 shadow-xl border-0 bg-gradient-to-b from-white to-gray-50/50">
+          <div className="space-y-6">
+
+            {/* Field 1: Monthly bill */}
+            <div>
+              <Label className="text-base font-semibold text-gray-700 mb-3 block">
+                Tiền điện trung bình mỗi tháng (VNĐ)
+              </Label>
+              <Input
+                type="text"
+                inputMode="numeric"
+                placeholder="Ví dụ: 2,000,000"
+                value={billVnd}
+                onChange={handleBillChange}
+                className="text-lg h-14 text-center font-semibold border-2 focus:border-amber-400"
+              />
+              {/* Quick suggestions */}
+              <div className="flex flex-wrap gap-2 mt-3">
+                {BILL_SUGGESTIONS.map((s) => (
+                  <button
+                    key={s.value}
+                    type="button"
+                    onClick={() => handleSuggestionClick(s.value)}
+                    className="px-4 py-2 rounded-full text-sm font-medium bg-gray-100 hover:bg-amber-100 hover:text-amber-700 transition-colors"
+                  >
+                    {s.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Field 2: Region */}
+            <div>
+              <Label className="text-base font-semibold text-gray-700 mb-3 block">
+                <MapPin className="w-4 h-4 inline mr-1" />
+                Khu vực
+              </Label>
+              <div className="grid grid-cols-3 gap-3">
+                {REGIONS.map((r) => (
+                  <button
+                    key={r.value}
+                    type="button"
+                    onClick={() => setRegion(r.value)}
+                    className={`px-4 py-3 rounded-xl text-center font-medium transition-all border-2 ${
+                      region === r.value
+                        ? 'border-amber-400 bg-amber-50 text-amber-700 shadow-sm'
+                        : 'border-gray-200 hover:border-gray-300 text-gray-600'
+                    }`}
+                  >
+                    <span className="text-xl block mb-1">{r.emoji}</span>
+                    <span className="text-sm">{r.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Field 3: Customer type */}
+            <div>
+              <Label className="text-base font-semibold text-gray-700 mb-3 block">
+                Loại khách hàng
+              </Label>
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => setCustomerType('residential')}
+                  className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all border-2 ${
+                    customerType === 'residential'
+                      ? 'border-amber-400 bg-amber-50 text-amber-700 shadow-sm'
+                      : 'border-gray-200 hover:border-gray-300 text-gray-600'
+                  }`}
+                >
+                  <Home className="w-5 h-5" />
+                  <span className="font-medium">Nhà ở</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCustomerType('business')}
+                  className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all border-2 ${
+                    customerType === 'business'
+                      ? 'border-amber-400 bg-amber-50 text-amber-700 shadow-sm'
+                      : 'border-gray-200 hover:border-gray-300 text-gray-600'
+                  }`}
+                >
+                  <Store className="w-5 h-5" />
+                  <span className="font-medium">Hộ kinh doanh</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Error */}
+            {error && (
+              <p className="text-red-500 text-sm text-center">{error}</p>
+            )}
+
+            {/* Calculate button */}
+            <Button
+              size="lg"
+              onClick={handleCalculate}
+              disabled={loading || billNumber < 100_000}
+              className="w-full bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white text-lg h-14 rounded-xl shadow-lg"
+            >
+              {loading ? (
+                <><Loader2 className="w-5 h-5 mr-2 animate-spin" /> Đang phân tích...</>
+              ) : (
+                <><Calculator className="w-5 h-5 mr-2" /> Phân tích ngay</>
+              )}
+            </Button>
+          </div>
+        </Card>
+
+        {/* Results */}
+        {result && (
+          <div id="calc-results" className="mt-10 space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            {/* Key metrics */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <Card className="p-6 text-center bg-gradient-to-br from-amber-50 to-orange-50 border-amber-200">
+                <Zap className="w-8 h-8 text-amber-500 mx-auto mb-2" />
+                <div className="text-3xl font-bold text-gray-900">{result.suggested_kwp} kWp</div>
+                <div className="text-sm text-gray-500 mt-1">Công suất đề xuất</div>
+              </Card>
+              <Card className="p-6 text-center bg-gradient-to-br from-green-50 to-emerald-50 border-green-200">
+                <TrendingDown className="w-8 h-8 text-green-500 mx-auto mb-2" />
+                <div className="text-3xl font-bold text-green-600">{formatVnd(result.est_saving_vnd_month)}</div>
+                <div className="text-sm text-gray-500 mt-1">Tiết kiệm mỗi tháng</div>
+              </Card>
+              <Card className="p-6 text-center bg-gradient-to-br from-blue-50 to-sky-50 border-blue-200">
+                <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-2">
+                  <span className="text-blue-600 font-bold text-sm">ROI</span>
+                </div>
+                <div className="text-3xl font-bold text-gray-900">~{result.est_payback_years} năm</div>
+                <div className="text-sm text-gray-500 mt-1">Hoàn vốn ước tính</div>
+              </Card>
+            </div>
+
+            {/* Chart: Before vs After */}
+            <Card className="p-6">
+              <h3 className="font-semibold text-gray-700 mb-4 text-center">
+                So sánh hóa đơn điện hàng tháng
+              </h3>
+              <div className="h-56">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={chartData} barSize={80}>
+                    <XAxis dataKey="name" tick={{ fontSize: 14, fontWeight: 600 }} />
+                    <YAxis
+                      tick={{ fontSize: 12 }}
+                      tickFormatter={(v: number) => `${(v / 1_000_000).toFixed(1)}tr`}
+                    />
+                    <Tooltip
+                      formatter={(value: number) => [`${value.toLocaleString('vi-VN')} VNĐ`, 'Tiền điện']}
+                    />
+                    <Bar dataKey="value" radius={[8, 8, 0, 0]}>
+                      {chartData.map((entry, index) => (
+                        <Cell key={index} fill={entry.fill} />
+                      ))}
+                      <LabelList
+                        dataKey="value"
+                        position="top"
+                        formatter={(v: number) => `${formatVnd(v)} VNĐ`}
+                        style={{ fontSize: 13, fontWeight: 600 }}
+                      />
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+              <div className="text-center mt-2">
+                <span className="inline-flex items-center gap-1 text-green-600 font-semibold">
+                  <TrendingDown className="w-4 h-4" />
+                  Giảm {formatVnd(billNumber - result.monthly_bill_after)} VNĐ/tháng
+                </span>
+              </div>
+            </Card>
+
+            {/* Disclaimer */}
+            <div className="flex items-start gap-2 text-sm text-gray-400 bg-gray-50 rounded-xl p-4">
+              <Info className="w-4 h-4 mt-0.5 flex-shrink-0" />
+              <p>{result.disclaimer}</p>
+            </div>
+
+            {/* CTA to next stage */}
+            <div className="text-center pt-4">
+              <Button
+                size="lg"
+                onClick={scrollToContact}
+                className="bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white text-lg px-10 py-6 rounded-2xl shadow-lg hover:shadow-xl transition-all"
+              >
+                Nhận báo giá chi tiết miễn phí
+                <ChevronRight className="w-5 h-5 ml-2" />
+              </Button>
+              <p className="text-sm text-gray-400 mt-3">Chỉ cần xác minh số điện thoại — không mất phí</p>
+            </div>
+          </div>
+        )}
       </div>
     </section>
   );

@@ -1,53 +1,60 @@
-import { Zap, Shield, TrendingDown, Wrench } from 'lucide-react';
 import { Card } from '@/components/ui/card';
+import { Wallet, Clock, ShieldCheck, Wrench } from 'lucide-react';
 
-const features = [
+const benefits = [
   {
-    icon: Zap,
-    title: 'Tính toán tự động',
-    description: 'Hệ thống AI tính toán công suất phù hợp dựa trên tiêu thụ điện',
+    icon: Wallet,
+    title: 'Tiết kiệm chi phí điện',
+    description: 'Giảm đến 80% hóa đơn điện mỗi tháng, tiết kiệm hàng chục triệu đồng mỗi năm.',
+    color: 'text-green-500',
+    bg: 'bg-green-50',
   },
   {
-    icon: Shield,
+    icon: Clock,
+    title: 'Thu hồi vốn nhanh',
+    description: 'Thời gian hoàn vốn chỉ từ 4-6 năm, sau đó bạn được dùng điện gần như miễn phí.',
+    color: 'text-amber-500',
+    bg: 'bg-amber-50',
+  },
+  {
+    icon: ShieldCheck,
     title: 'Bảo hành 25 năm',
-    description: 'Thiết bị chính hãng với bảo hành dài hạn',
-  },
-  {
-    icon: TrendingDown,
-    title: 'Tiết kiệm 90%',
-    description: 'Giảm hóa đơn điện đến 90% mỗi tháng',
+    description: 'Hệ thống bền bỉ với tuổi thọ trên 25 năm, bảo hành toàn diện từ nhà sản xuất.',
+    color: 'text-blue-500',
+    bg: 'bg-blue-50',
   },
   {
     icon: Wrench,
-    title: 'Lắp đặt nhanh',
-    description: 'Thi công hoàn thành trong 3-5 ngày',
+    title: 'Khảo sát miễn phí',
+    description: 'Đội ngũ kỹ thuật sẽ đến khảo sát thực tế mái nhà và tư vấn giải pháp tốt nhất cho bạn.',
+    color: 'text-purple-500',
+    bg: 'bg-purple-50',
   },
 ];
 
 export default function FeaturesSection() {
   return (
-    <section id="features" className="py-20 bg-gray-50">
-      <div className="container mx-auto px-4">
-        <h2 className="text-3xl font-bold text-center text-gray-900 mb-4">
-          Tại sao chọn chúng tôi?
-        </h2>
-        <p className="text-center text-gray-600 mb-12 max-w-2xl mx-auto">
-          Giải pháp điện mặt trời toàn diện với công nghệ tiên tiến
-        </p>
+    <section id="features" className="py-20 bg-gray-50/50">
+      <div className="max-w-6xl mx-auto px-6">
+        <div className="text-center mb-14">
+          <h2 className="text-3xl sm:text-4xl font-bold text-gray-900 mb-3">
+            Vì sao nên lắp điện mặt trời?
+          </h2>
+          <p className="text-gray-500 max-w-xl mx-auto">
+            Hàng nghìn gia đình đã tiết kiệm đáng kể với điện mặt trời. Bạn cũng có thể!
+          </p>
+        </div>
 
-        <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
-          {features.map((feature, index) => {
-            const Icon = feature.icon;
-            return (
-              <Card key={index} className="p-6 text-center">
-                <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <Icon className="w-6 h-6 text-blue-600" />
-                </div>
-                <h3 className="font-bold text-lg mb-2">{feature.title}</h3>
-                <p className="text-gray-600 text-sm">{feature.description}</p>
-              </Card>
-            );
-          })}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+          {benefits.map((b, i) => (
+            <Card key={i} className="p-6 hover:shadow-lg transition-shadow border-0 bg-white">
+              <div className={`w-12 h-12 ${b.bg} rounded-xl flex items-center justify-center mb-4`}>
+                <b.icon className={`w-6 h-6 ${b.color}`} />
+              </div>
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">{b.title}</h3>
+              <p className="text-sm text-gray-500 leading-relaxed">{b.description}</p>
+            </Card>
+          ))}
         </div>
       </div>
     </section>
