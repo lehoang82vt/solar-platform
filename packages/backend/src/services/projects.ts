@@ -316,8 +316,15 @@ export async function listProjectsV3(
     }
     if (filters?.search != null && filters.search.trim() !== '') {
       const likePattern = '%' + filters.search.trim() + '%';
+      // Search in projects.customer_name, projects.address, and quotes snapshot (via LATERAL qc)
       conditions.push(
-        `(p.customer_name ILIKE $${paramIndex} OR p.address ILIKE $${paramIndex} OR cu.name ILIKE $${paramIndex} OR cu.phone ILIKE $${paramIndex} OR cu.email ILIKE $${paramIndex})`
+        `(p.customer_name ILIKE $${paramIndex} OR p.address ILIKE $${paramIndex} OR EXISTS (
+          SELECT 1 FROM quotes q_search
+          WHERE q_search.organization_id = p.organization_id 
+            AND q_search.project_id = p.id
+            AND (q_search.customer_name ILIKE $${paramIndex} OR q_search.customer_phone ILIKE $${paramIndex} OR q_search.customer_email ILIKE $${paramIndex})
+          LIMIT 1
+        ))`
       );
       params.push(likePattern);
       paramIndex += 1;
@@ -370,7 +377,13 @@ export async function listProjectsV3(
     if (filters?.search != null && filters.search.trim() !== '') {
       const likePattern = '%' + filters.search.trim() + '%';
       countConditions.push(
-        `(p.customer_name ILIKE $${countParamIndex} OR p.address ILIKE $${countParamIndex})`
+        `(p.customer_name ILIKE $${countParamIndex} OR p.address ILIKE $${countParamIndex} OR EXISTS (
+          SELECT 1 FROM quotes q_search
+          WHERE q_search.organization_id = p.organization_id 
+            AND q_search.project_id = p.id
+            AND (q_search.customer_name ILIKE $${countParamIndex} OR q_search.customer_phone ILIKE $${countParamIndex} OR q_search.customer_email ILIKE $${countParamIndex})
+          LIMIT 1
+        ))`
       );
       countParams.push(likePattern);
     }

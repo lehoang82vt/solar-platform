@@ -98,38 +98,62 @@ export async function createHandover(
   }
 
   return await withOrgContext(organizationId, async (client) => {
+    // Schema 038: handovers doesn't have project_id, use contract_id
+    // handover_type should be INSTALLATION, COMMISSIONING, or FINAL (not DRAFT)
+    // For new handover, use INSTALLATION as default
+    const contractId = input.contract_id ?? ready[0].id;
+    const acceptanceObj = acceptance as Record<string, unknown>;
+    const handoverDate = acceptanceObj.handover_date as string || new Date().toISOString().split('T')[0];
     const result = await client.query(
-      `INSERT INTO handovers (organization_id, project_id, contract_id, status, acceptance_json)
+      `INSERT INTO handovers (organization_id, contract_id, handover_type, handover_date, checklist)
        VALUES ($1, $2, $3, $4, $5)
-       RETURNING id, organization_id, project_id, contract_id, status, acceptance_json,
-         signed_at, signed_by, completed_at, completed_by, created_at, updated_at`,
+       RETURNING id, organization_id, contract_id, handover_type, handover_date, accepted_by, checklist, created_at`,
       [
         organizationId,
-        projectId,
-        input.contract_id ?? null,
-        HANDOVER_STATUS.DRAFT,
+        contractId,
+        HANDOVER_TYPE.INSTALLATION, // Default to INSTALLATION for new handovers
+        handoverDate,
         JSON.stringify(acceptance),
       ]
     );
     const row = result.rows[0] as Record<string, unknown>;
+    // Add project_id from contract for compatibility
+    const contractResult = await client.query('SELECT project_id FROM contracts WHERE id = $1', [contractId]);
+    if (contractResult.rows.length > 0) {
+      row.project_id = (contractResult.rows[0] as { project_id: string }).project_id;
+    }
     return { kind: 'ok', handover: mapRowToHandover(row) };
   });
 }
 
 function mapRowToHandover(row: Record<string, unknown>): HandoverRow {
+  // Schema 038: map handover_type to status for compatibility
+  // DRAFT = accepted_by IS NULL, SIGNED = accepted_by IS NOT NULL, COMPLETED = accepted_by IS NOT NULL AND handover_date IS NOT NULL
+  const acceptedBy = row.accepted_by as string | null;
+  const handoverDate = row.handover_date as string | null;
+  let status: string | undefined;
+  if (!acceptedBy) {
+    status = HANDOVER_STATUS.DRAFT;
+  } else if (acceptedBy && handoverDate) {
+    status = HANDOVER_STATUS.COMPLETED;
+  } else {
+    status = HANDOVER_STATUS.SIGNED;
+  }
   return {
     id: row.id as string,
     organization_id: row.organization_id as string,
-    project_id: (row.project_id as string) || '',
+    project_id: (row.project_id as string) || undefined,
     contract_id: (row.contract_id as string) || '',
-    status: (row.status as string) || (row.handover_type as string) || '',
-    acceptance_json: (row.acceptance_json as Record<string, unknown>) || {},
-    signed_at: row.signed_at as string | null,
-    signed_by: row.signed_by as string | null,
-    completed_at: row.completed_at as string | null,
-    completed_by: row.completed_by as string | null,
+    status,
+    handover_type: (row.handover_type as string) || undefined,
+    acceptance_json: undefined, // Schema 038: use checklist instead
+    checklist: (row.checklist as Record<string, unknown>) || undefined,
+    signed_at: acceptedBy ? (row.handover_date as string | null) : null,
+    signed_by: acceptedBy || null,
+    completed_at: (acceptedBy && handoverDate) ? handoverDate : null,
+    completed_by: (acceptedBy && handoverDate) ? acceptedBy : null,
     created_at: row.created_at as string,
-    updated_at: row.updated_at as string,
+    updated_at: undefined, // Schema 038: doesn't have updated_at
   };
 }
 
@@ -138,10 +162,13 @@ async function getHandoverByIdProjectOrg(
   handoverId: string,
   projectId: string
 ): Promise<HandoverRow | null> {
+  // Schema 038: handovers doesn't have project_id, get via contract
   const result = await client.query(
-    `SELECT id, organization_id, project_id, contract_id, status, acceptance_json,
-      signed_at, signed_by, completed_at, completed_by, created_at, updated_at
-     FROM handovers WHERE id = $1 AND project_id = $2`,
+    `SELECT h.id, h.organization_id, h.contract_id, h.handover_type, h.checklist,
+      h.handover_date, h.accepted_by, h.created_at, c.project_id
+     FROM handovers h
+     JOIN contracts c ON h.contract_id = c.id
+     WHERE h.id = $1 AND c.project_id = $2`,
     [handoverId, projectId]
   );
   if (result.rows.length === 0) return null;
@@ -163,10 +190,13 @@ export async function listHandoversByProject(
   projectId: string
 ): Promise<HandoverRow[]> {
   return await withOrgContext(organizationId, async (client) => {
+    // Schema 038: handovers doesn't have project_id, get via contract
     const result = await client.query(
-      `SELECT id, organization_id, project_id, contract_id, status, acceptance_json,
-        signed_at, signed_by, completed_at, completed_by, created_at, updated_at
-       FROM handovers WHERE project_id = $1 ORDER BY created_at DESC`,
+      `SELECT h.id, h.organization_id, h.contract_id, h.handover_type, h.checklist,
+        h.handover_date, h.accepted_by, h.created_at, c.project_id
+       FROM handovers h
+       JOIN contracts c ON h.contract_id = c.id
+       WHERE c.project_id = $1 ORDER BY h.created_at DESC`,
       [projectId]
     );
     return result.rows.map((r) => mapRowToHandover(r as Record<string, unknown>));
@@ -383,14 +413,17 @@ export async function updateHandover(
   patch: { acceptance_json?: unknown }
 ): Promise<UpdateHandoverResult> {
   return await withOrgContext(organizationId, async (client) => {
+    // Schema 038: handovers doesn't have project_id, get via contract
     const exist = await client.query(
-      'SELECT id, status FROM handovers WHERE id = $1 AND project_id = $2',
+      `SELECT h.id, h.accepted_by FROM handovers h
+       JOIN contracts c ON h.contract_id = c.id
+       WHERE h.id = $1 AND c.project_id = $2`,
       [handoverId, projectId]
     );
     if (exist.rows.length === 0) return { kind: 'not_found' };
-    const status = (exist.rows[0] as { status: string }).status;
-    const upper = (status || '').toUpperCase();
-    if (upper !== HANDOVER_STATUS.DRAFT) {
+    const acceptedBy = (exist.rows[0] as { accepted_by: string | null }).accepted_by;
+    // Only allow update if not yet accepted (DRAFT state)
+    if (acceptedBy != null) {
       return { kind: 'immutable' };
     }
     if (patch.acceptance_json !== undefined) {
@@ -399,8 +432,8 @@ export async function updateHandover(
         return { kind: 'validation_failed', missing_fields: validation.missing_fields };
       }
       await client.query(
-        `UPDATE handovers SET acceptance_json = $1, updated_at = now() WHERE id = $2 AND project_id = $3`,
-        [JSON.stringify(patch.acceptance_json), handoverId, projectId]
+        `UPDATE handovers SET checklist = $1 WHERE id = $2`,
+        [JSON.stringify(patch.acceptance_json), handoverId]
       );
     }
     const handover = await getHandoverByIdProjectOrg(client, handoverId, projectId);
@@ -420,19 +453,22 @@ export async function signHandover(
   signedBy: string
 ): Promise<SignHandoverResult> {
   return await withOrgContext(organizationId, async (client) => {
+    // Schema 038: handovers doesn't have project_id, get via contract
     const exist = await client.query(
-      'SELECT id, status FROM handovers WHERE id = $1 AND project_id = $2',
+      `SELECT h.id, h.accepted_by FROM handovers h
+       JOIN contracts c ON h.contract_id = c.id
+       WHERE h.id = $1 AND c.project_id = $2`,
       [handoverId, projectId]
     );
     if (exist.rows.length === 0) return { kind: 'not_found' };
-    const status = (exist.rows[0] as { status: string }).status;
-    if ((status || '').toUpperCase() !== HANDOVER_STATUS.DRAFT) {
-      return { kind: 'invalid_state', status };
+    const acceptedBy = (exist.rows[0] as { accepted_by: string | null }).accepted_by;
+    // Only allow sign if not yet accepted (DRAFT state)
+    if (acceptedBy != null) {
+      return { kind: 'invalid_state', status: 'ALREADY_ACCEPTED' };
     }
     await client.query(
-      `UPDATE handovers SET status = $1, signed_at = now(), signed_by = $2, updated_at = now()
-       WHERE id = $3 AND project_id = $4`,
-      [HANDOVER_STATUS.SIGNED, signedBy, handoverId, projectId]
+      `UPDATE handovers SET accepted_by = $1 WHERE id = $2`,
+      [signedBy, handoverId]
     );
     const handover = await getHandoverByIdProjectOrg(client, handoverId, projectId);
     return handover ? { kind: 'ok', handover } : { kind: 'not_found' };
@@ -448,22 +484,30 @@ export async function completeHandover(
   organizationId: string,
   projectId: string,
   handoverId: string,
-  completedBy: string
+  _completedBy: string // Schema 038: completed_by not stored, use accepted_by from sign step
 ): Promise<CompleteHandoverResult> {
   return await withOrgContext(organizationId, async (client) => {
+    // Schema 038: handovers doesn't have project_id, get via contract
     const exist = await client.query(
-      'SELECT id, status FROM handovers WHERE id = $1 AND project_id = $2',
+      `SELECT h.id, h.accepted_by, h.handover_date FROM handovers h
+       JOIN contracts c ON h.contract_id = c.id
+       WHERE h.id = $1 AND c.project_id = $2`,
       [handoverId, projectId]
     );
     if (exist.rows.length === 0) return { kind: 'not_found' };
-    const status = (exist.rows[0] as { status: string }).status;
-    if ((status || '').toUpperCase() !== HANDOVER_STATUS.SIGNED) {
-      return { kind: 'invalid_state', status };
+    const acceptedBy = (exist.rows[0] as { accepted_by: string | null }).accepted_by;
+    const handoverDate = (exist.rows[0] as { handover_date: string | null }).handover_date;
+    // Only allow complete if already accepted (SIGNED state) but not yet completed
+    if (acceptedBy == null) {
+      return { kind: 'invalid_state', status: 'NOT_ACCEPTED' };
     }
+    if (handoverDate != null) {
+      return { kind: 'invalid_state', status: 'ALREADY_COMPLETED' };
+    }
+    // Set handover_date to mark as completed (completedBy is logged via accepted_by which was set during sign)
     await client.query(
-      `UPDATE handovers SET status = $1, completed_at = now(), completed_by = $2, updated_at = now()
-       WHERE id = $3 AND project_id = $4`,
-      [HANDOVER_STATUS.COMPLETED, completedBy, handoverId, projectId]
+      `UPDATE handovers SET handover_date = CURRENT_DATE WHERE id = $1`,
+      [handoverId]
     );
     const handover = await getHandoverByIdProjectOrg(client, handoverId, projectId);
     return handover ? { kind: 'ok', handover } : { kind: 'not_found' };
