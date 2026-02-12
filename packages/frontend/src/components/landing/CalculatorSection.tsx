@@ -270,10 +270,10 @@ export default function CalculatorSection({ onResult }: LiteAnalysisProps) {
                     <XAxis dataKey="name" tick={{ fontSize: 14, fontWeight: 600 }} />
                     <YAxis
                       tick={{ fontSize: 12 }}
-                      tickFormatter={(v: number) => `${(v / 1_000_000).toFixed(1)}tr`}
+                      tickFormatter={(v) => `${(Number(v) / 1_000_000).toFixed(1)}tr`}
                     />
                     <Tooltip
-                      formatter={(value: number) => [`${value.toLocaleString('vi-VN')} VNĐ`, 'Tiền điện']}
+                      formatter={(value) => [`${Number(value).toLocaleString('vi-VN')} VNĐ`, 'Tiền điện']}
                     />
                     <Bar dataKey="value" radius={[8, 8, 0, 0]}>
                       {chartData.map((entry, index) => (
@@ -282,7 +282,7 @@ export default function CalculatorSection({ onResult }: LiteAnalysisProps) {
                       <LabelList
                         dataKey="value"
                         position="top"
-                        formatter={(v: number) => `${formatVnd(v)} VNĐ`}
+                        formatter={(v) => `${formatVnd(Number(v))} VNĐ`}
                         style={{ fontSize: 13, fontWeight: 600 }}
                       />
                     </Bar>
