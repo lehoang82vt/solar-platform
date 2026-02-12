@@ -22,7 +22,7 @@ export default function NewLeadPage() {
     if (!phone.trim()) return;
     setLoading(true);
     try {
-      const { data } = await api.post<{ id: string }>('/api/sales/leads', {
+      const { data } = await api.post<{ id: string; phone: string; status: string }>('/sales/leads', {
         phone: phone.trim(),
       });
       toast({
@@ -31,10 +31,25 @@ export default function NewLeadPage() {
       });
       router.push(`/sales/leads/${data.id}`);
     } catch (error: unknown) {
-      const err = error as { response?: { data?: { error?: string } } };
+      console.error('Error creating lead:', error);
+      const err = error as { response?: { data?: { error?: string }; status?: number }; message?: string };
+      let errorMessage = 'Không thể tạo lead';
+      
+      if (err.response?.data?.error) {
+        errorMessage = err.response.data.error;
+      } else if (err.response?.status === 400) {
+        errorMessage = 'Dữ liệu không hợp lệ';
+      } else if (err.response?.status === 401) {
+        errorMessage = 'Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại';
+      } else if (err.response?.status === 500) {
+        errorMessage = 'Lỗi server. Vui lòng thử lại sau';
+      } else if (err.message) {
+        errorMessage = err.message;
+      }
+      
       toast({
         title: 'Lỗi',
-        description: err.response?.data?.error || 'Không thể tạo lead',
+        description: errorMessage,
         variant: 'destructive',
       });
     } finally {
