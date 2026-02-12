@@ -23,8 +23,8 @@ export default function AdminDashboardPage() {
   useEffect(() => {
     const fetchOverview = async () => {
       try {
-        const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api';
-        const response = await fetch(`${apiUrl}/bi/overview`, {
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+        const response = await fetch(`${apiUrl}/api/bi/overview`, {
           headers: {
             'Authorization': `Bearer ${token}`,
           },

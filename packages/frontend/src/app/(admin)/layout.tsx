@@ -1,9 +1,10 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/stores/authStore';
 import AdminNav from '@/components/layout/AdminNav';
+import { LoadingPage } from '@/components/ui/loading';
 
 export default function AdminLayout({
   children,
@@ -11,18 +12,44 @@ export default function AdminLayout({
   children: React.ReactNode;
 }) {
   const router = useRouter();
-  const { isAuthenticated, hasRole } = useAuthStore();
+  const { isAuthenticated, hasRole, user } = useAuthStore();
+  const [isChecking, setIsChecking] = useState(true);
 
   useEffect(() => {
-    if (!isAuthenticated()) {
-      router.push('/login');
-    } else if (!hasRole('admin') && !hasRole('super_admin')) {
-      router.push('/sales');
-    }
-  }, [isAuthenticated, hasRole, router]);
+    // Wait for hydration
+    const checkAuth = () => {
+      if (typeof window === 'undefined') return;
+      
+      setIsChecking(false);
+      
+      if (!isAuthenticated()) {
+        router.push('/login');
+        return;
+      }
+      
+      const userRole = user?.role?.toLowerCase();
+      if (userRole !== 'admin' && userRole !== 'super_admin') {
+        router.push('/sales');
+        return;
+      }
+    };
 
-  if (!isAuthenticated() || (!hasRole('admin') && !hasRole('super_admin'))) {
-    return null;
+    // Small delay to ensure zustand persist has hydrated
+    const timer = setTimeout(checkAuth, 100);
+    return () => clearTimeout(timer);
+  }, [isAuthenticated, hasRole, user, router]);
+
+  if (isChecking) {
+    return <LoadingPage />;
+  }
+
+  if (!isAuthenticated()) {
+    return <LoadingPage />;
+  }
+
+  const userRole = user?.role?.toLowerCase();
+  if (userRole !== 'admin' && userRole !== 'super_admin') {
+    return <LoadingPage />;
   }
 
   return (

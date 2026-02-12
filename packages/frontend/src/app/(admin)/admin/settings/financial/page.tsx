@@ -59,7 +59,7 @@ export default function FinancialConfigPage() {
   const loadConfig = async () => {
     try {
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
-      const response = await fetch(`${apiUrl}/financial/config`, {
+      const response = await fetch(`${apiUrl}/api/financial/config`, {
         headers: {
           'Authorization': `Bearer ${token}`,
         },
@@ -84,7 +84,7 @@ export default function FinancialConfigPage() {
 
     try {
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
-      const response = await fetch(`${apiUrl}/financial/config`, {
+      const response = await fetch(`${apiUrl}/api/financial/config`, {
         method: config.id ? 'PUT' : 'POST',
         headers: {
           'Content-Type': 'application/json',
