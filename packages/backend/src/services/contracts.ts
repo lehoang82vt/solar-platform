@@ -174,11 +174,11 @@ export async function createContract(
     const result = await client.query(
       `INSERT INTO contracts (
         organization_id, project_id, quote_id, contract_number, status,
-        contract_value, customer_snapshot, system_snapshot, financial_snapshot,
+        total_vnd, customer_snapshot, system_snapshot, financial_snapshot,
         payment_terms, warranty_terms, construction_days
       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
       RETURNING id, organization_id, project_id, quote_id, contract_number, status,
-        contract_value::text, customer_snapshot, system_snapshot, financial_snapshot,
+        total_vnd::text as contract_value, customer_snapshot, system_snapshot, financial_snapshot,
         payment_terms, warranty_terms, construction_days,
         signed_at, signed_by, cancel_reason, created_at, updated_at`,
       [
@@ -277,7 +277,7 @@ async function getContractByIdProjectOrg(
 ): Promise<ContractRow | null> {
   const result = await client.query(
     `SELECT id, organization_id, project_id, quote_id, contract_number, status,
-      contract_value::text, customer_snapshot, system_snapshot, financial_snapshot,
+      total_vnd::text as contract_value, customer_snapshot, system_snapshot, financial_snapshot,
       payment_terms, warranty_terms, construction_days,
       signed_at, signed_by, cancel_reason, created_at, updated_at
      FROM contracts WHERE id = $1 AND project_id = $2`,
@@ -452,7 +452,7 @@ export async function listContractsByProject(
   return await withOrgContext(organizationId, async (client) => {
     const result = await client.query(
       `SELECT id, organization_id, project_id, quote_id, contract_number, status,
-        contract_value::text, customer_snapshot, system_snapshot, financial_snapshot,
+        total_vnd::text as contract_value, customer_snapshot, system_snapshot, financial_snapshot,
         payment_terms, warranty_terms, construction_days,
         signed_at, signed_by, cancel_reason, created_at, updated_at
        FROM contracts WHERE project_id = $1 ORDER BY created_at DESC`,
