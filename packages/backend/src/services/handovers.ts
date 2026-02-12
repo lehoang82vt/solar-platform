@@ -3,6 +3,13 @@ import { getProjectByIdOrgSafe } from './projects';
 import { listContractsByProject } from './contracts';
 import { CONTRACT_STATUS } from './contracts';
 
+/** Handover status stored UPPERCASE (for legacy schema 010). */
+export const HANDOVER_STATUS = {
+  DRAFT: 'DRAFT',
+  SIGNED: 'SIGNED',
+  COMPLETED: 'COMPLETED',
+} as const;
+
 /** Handover type (schema 038 doesn't have status, only handover_type). */
 export const HANDOVER_TYPE = {
   INSTALLATION: 'INSTALLATION',
@@ -113,9 +120,9 @@ function mapRowToHandover(row: Record<string, unknown>): HandoverRow {
   return {
     id: row.id as string,
     organization_id: row.organization_id as string,
-    project_id: row.project_id as string,
-    contract_id: row.contract_id as string | null,
-    status: row.status as string,
+    project_id: (row.project_id as string) || '',
+    contract_id: (row.contract_id as string) || '',
+    status: (row.status as string) || (row.handover_type as string) || '',
     acceptance_json: (row.acceptance_json as Record<string, unknown>) || {},
     signed_at: row.signed_at as string | null,
     signed_by: row.signed_by as string | null,
