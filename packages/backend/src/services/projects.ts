@@ -342,15 +342,15 @@ export async function listProjectsV3(
       FROM projects p
       LEFT JOIN quotes q ON q.organization_id = p.organization_id AND q.project_id = p.id
       LEFT JOIN contracts ctt ON ctt.project_id = p.id
-      LEFT JOIN handovers h ON h.project_id = p.id
+      LEFT JOIN contracts ctt_for_handovers ON ctt_for_handovers.project_id = p.id
+      LEFT JOIN handovers h ON h.contract_id = ctt_for_handovers.id
       LEFT JOIN LATERAL (
-        SELECT q2.customer_id FROM quotes q2
-        WHERE q2.organization_id = p.organization_id AND q2.project_id = p.id
-        ORDER BY q2.id LIMIT 1
+        SELECT quotes.customer_name, quotes.customer_phone, quotes.customer_email FROM quotes
+        WHERE quotes.organization_id = p.organization_id AND quotes.project_id = p.id
+        ORDER BY quotes.id LIMIT 1
       ) qc ON true
-      LEFT JOIN customers cu ON cu.id = qc.customer_id
       WHERE p.organization_id = $1 ${whereClause}
-      GROUP BY p.id, p.customer_name, p.address, p.status, p.created_at, qc.customer_id, cu.id, cu.name, cu.phone, cu.email
+      GROUP BY p.id, p.customer_name, p.address, p.status, p.created_at, qc.customer_name, qc.customer_phone, qc.customer_email
       ORDER BY p.created_at DESC
       LIMIT $2 OFFSET $3
     `;
@@ -388,7 +388,6 @@ export async function listProjectsV3(
       address: string | null;
       status: string;
       created_at: string;
-      customer_id: string | null;
       customer_name_cu: string | null;
       customer_phone: string | null;
       customer_email: string | null;
@@ -402,9 +401,9 @@ export async function listProjectsV3(
       status: row.status ?? 'NEW',
       created_at: row.created_at,
       customer:
-        row.customer_id != null && row.customer_name_cu != null
+        row.customer_name_cu != null
           ? {
-              id: row.customer_id,
+              id: null, // Schema 034: quotes doesn't have customer_id, only snapshot
               name: row.customer_name_cu,
               phone: row.customer_phone,
               email: row.customer_email,

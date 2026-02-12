@@ -641,21 +641,35 @@ export async function getContractDetailV2(
       project = { id: p.id, customer_name: p.customer_name, address: p.address, status: p.status };
     }
 
-    let quote: { id: string; status: string; price_total: number | null; payload: Record<string, unknown> } | null = null;
+    let quote: { id: string; status: string; price_total: number | null; payload: Record<string, unknown>; customer_name?: string | null; customer_phone?: string | null; customer_email?: string | null } | null = null;
     let quoteCustomerId: string | null = null;
     const quoteResult = await client.query(
-      `SELECT id, status, price_total, payload, customer_id FROM quotes WHERE id = $1 LIMIT 1`,
+      `SELECT id, status, total_vnd as price_total, customer_name, customer_phone, customer_email FROM quotes WHERE id = $1 LIMIT 1`,
       [c.quote_id]
     );
     if (quoteResult.rows.length > 0) {
-      const q = quoteResult.rows[0] as { id: string; status: string; price_total: unknown; payload: unknown; customer_id: string };
+      const q = quoteResult.rows[0] as { id: string; status: string; price_total: unknown; customer_name: string | null; customer_phone: string | null; customer_email: string | null };
       quote = {
         id: q.id,
         status: q.status,
         price_total: q.price_total != null ? Number(q.price_total) : null,
-        payload: (typeof q.payload === 'string' ? JSON.parse(q.payload) : q.payload) as Record<string, unknown>,
+        payload: {}, // Schema 034: quotes doesn't have payload
+        customer_name: q.customer_name,
+        customer_phone: q.customer_phone,
+        customer_email: q.customer_email,
       };
-      quoteCustomerId = q.customer_id ?? null;
+      // Try to find customer by snapshot data
+      if (q.customer_name || q.customer_phone || q.customer_email) {
+        const custResult = await client.query(
+          `SELECT id, name, phone, email FROM customers 
+           WHERE organization_id = (current_setting('app.current_org_id', true))::uuid
+           AND (name = $1 OR phone = $2 OR email = $3) LIMIT 1`,
+          [q.customer_name || '', q.customer_phone || '', q.customer_email || '']
+        );
+        if (custResult.rows.length > 0) {
+          quoteCustomerId = (custResult.rows[0] as { id: string }).id;
+        }
+      }
     }
 
     let customer: { id: string; name: string; phone: string | null; email: string | null } | null = null;
@@ -668,12 +682,22 @@ export async function getContractDetailV2(
         const cu = custResult.rows[0] as { id: string; name: string; phone: string | null; email: string | null };
         customer = { id: cu.id, name: cu.name, phone: cu.phone, email: cu.email };
       }
+    } else if (quote && quote.customer_name) {
+      // Fallback: use snapshot from quote
+      customer = {
+        id: '',
+        name: quote.customer_name,
+        phone: quote.customer_phone || null,
+        email: quote.customer_email || null,
+      };
     }
 
     let handover: { id: string; status: string } | null = null;
+    // Schema 038: handovers doesn't have project_id, get via contract
     const hoResult = await client.query(
-      `SELECT id, status FROM handovers WHERE project_id = $1 ORDER BY created_at DESC LIMIT 1`,
-      [c.project_id]
+      `SELECT h.id, h.handover_type as status FROM handovers h 
+       WHERE h.contract_id = $1 ORDER BY h.created_at DESC LIMIT 1`,
+      [c.id]
     );
     if (hoResult.rows.length > 0) {
       const h = hoResult.rows[0] as { id: string; status: string };
