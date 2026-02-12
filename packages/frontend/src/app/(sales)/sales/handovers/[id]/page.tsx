@@ -56,7 +56,7 @@ export default function HandoverDetailPage() {
   const loadHandover = async () => {
     try {
       // Try multiple API patterns since the v2 endpoint may structure differently
-      const { data } = await api.get(`/handovers/v2`);
+      const { data } = await api.get(`/api/handovers/v2`);
       const list = data.value || data.handovers || [];
       const found = (list as HandoverDetail[]).find((h: HandoverDetail) => h.id === handoverId);
       if (found) {
@@ -75,7 +75,7 @@ export default function HandoverDetailPage() {
     if (!handover) return;
     setActionLoading(true);
     try {
-      await api.post(`/projects/${handover.project_id}/handovers/${handoverId}/sign`);
+      await api.post(`/api/projects/${handover.project_id}/handovers/${handoverId}/sign`);
       toast({ title: 'Đã ký', description: 'Bàn giao đã được ký' });
       loadHandover();
     } catch (error: unknown) {
@@ -91,7 +91,7 @@ export default function HandoverDetailPage() {
     if (!confirm('Xác nhận hoàn thành bàn giao?')) return;
     setActionLoading(true);
     try {
-      await api.post(`/projects/${handover.project_id}/handovers/${handoverId}/complete`);
+      await api.post(`/api/projects/${handover.project_id}/handovers/${handoverId}/complete`);
       toast({ title: 'Hoàn thành', description: 'Bàn giao đã hoàn thành' });
       loadHandover();
     } catch (error: unknown) {
@@ -107,7 +107,7 @@ export default function HandoverDetailPage() {
     if (!confirm('Xác nhận huỷ bàn giao?')) return;
     setActionLoading(true);
     try {
-      await api.post(`/handovers/${handoverId}/cancel`);
+      await api.post(`/api/handovers/${handoverId}/cancel`);
       toast({ title: 'Đã huỷ', description: 'Bàn giao đã bị huỷ' });
       loadHandover();
     } catch (error: unknown) {

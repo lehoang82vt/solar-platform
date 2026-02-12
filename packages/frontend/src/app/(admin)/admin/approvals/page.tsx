@@ -29,7 +29,7 @@ export default function ApprovalsPage() {
 
   const loadPendingQuotes = async () => {
     try {
-      const { data } = await api.get<{ quotes: PendingQuote[] }>('/quotes/pending');
+      const { data } = await api.get<{ quotes: PendingQuote[] }>('/api/quotes/pending');
       setQuotes(data.quotes || []);
     } catch (error) {
       console.error('Failed to load pending quotes', error);
@@ -45,7 +45,7 @@ export default function ApprovalsPage() {
 
   const approve = async (id: string) => {
     try {
-      await api.post(`/quotes/${id}/approve`);
+      await api.post(`/api/quotes/${id}/approve`);
       toast({ title: 'Đã duyệt', description: 'Báo giá đã được phê duyệt' });
       loadPendingQuotes();
     } catch (error: unknown) {
@@ -62,7 +62,7 @@ export default function ApprovalsPage() {
     const reason = prompt('Lý do từ chối:');
     if (reason === null) return;
     try {
-      await api.post(`/quotes/${id}/reject`, { reason: reason || '' });
+      await api.post(`/api/quotes/${id}/reject`, { reason: reason || '' });
       toast({ title: 'Đã từ chối', description: 'Báo giá đã bị từ chối' });
       loadPendingQuotes();
     } catch (error: unknown) {

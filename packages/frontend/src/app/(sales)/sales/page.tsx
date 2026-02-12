@@ -24,7 +24,7 @@ export default function SalesDashboard() {
 
   const loadStats = async () => {
     try {
-      const { data } = await api.get<DashboardStats>('/sales/dashboard');
+      const { data } = await api.get<DashboardStats>('/api/sales/dashboard');
       setStats(data);
     } catch (error) {
       console.error('Failed to load stats', error);

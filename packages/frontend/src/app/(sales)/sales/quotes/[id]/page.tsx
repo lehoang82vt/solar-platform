@@ -65,7 +65,7 @@ export default function QuoteDetailPage() {
 
   const loadQuote = async () => {
     try {
-      const { data } = await api.get<{ value?: QuoteDetail; quote?: QuoteDetail }>(`/quotes/${quoteId}/v2`);
+      const { data } = await api.get<{ value?: QuoteDetail; quote?: QuoteDetail }>(`/api/quotes/${quoteId}/v2`);
       setQuote(data.value || data.quote || null);
     } catch {
       toast({ title: 'Lỗi', description: 'Không tải được báo giá', variant: 'destructive' });
@@ -77,7 +77,7 @@ export default function QuoteDetailPage() {
   const handleSubmit = async () => {
     setSubmitting(true);
     try {
-      await api.post(`/quotes/${quoteId}/submit`);
+      await api.post(`/api/quotes/${quoteId}/submit`);
       toast({ title: 'Đã gửi', description: 'Báo giá đã được gửi để phê duyệt' });
       loadQuote();
     } catch (error: unknown) {
@@ -90,7 +90,7 @@ export default function QuoteDetailPage() {
 
   const handleDownloadPdf = async () => {
     try {
-      const response = await api.get(`/quotes/${quoteId}/pdf`, { responseType: 'blob' });
+      const response = await api.get(`/api/quotes/${quoteId}/pdf`, { responseType: 'blob' });
       const url = window.URL.createObjectURL(new Blob([response.data as BlobPart]));
       const a = document.createElement('a');
       a.href = url;
@@ -105,7 +105,7 @@ export default function QuoteDetailPage() {
   const handleDelete = async () => {
     if (!confirm('Xác nhận xoá báo giá này?')) return;
     try {
-      await api.delete(`/quotes/${quoteId}`);
+      await api.delete(`/api/quotes/${quoteId}`);
       toast({ title: 'Đã xoá', description: 'Báo giá đã được xoá' });
       router.push('/sales/quotes');
     } catch {
@@ -116,7 +116,7 @@ export default function QuoteDetailPage() {
   const handleCreateContract = async () => {
     if (!quote?.project_id && !quote?.id) return;
     try {
-      await api.post(`/quotes/${quoteId}/contracts`);
+      await api.post(`/api/quotes/${quoteId}/contracts`);
       toast({ title: 'Đã tạo', description: 'Hợp đồng đã được tạo từ báo giá' });
       router.push('/sales/contracts');
     } catch (error: unknown) {

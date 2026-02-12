@@ -38,7 +38,7 @@ export default function ContractsPage() {
 
   const loadContracts = async () => {
     try {
-      const { data } = await api.get<{ value?: ContractItem[]; contracts?: ContractItem[] }>('/contracts/v2');
+      const { data } = await api.get<{ value?: ContractItem[]; contracts?: ContractItem[] }>('/api/contracts/v2');
       setContracts(data.value || data.contracts || []);
     } catch {
       toast({ title: 'Lỗi', description: 'Không tải được danh sách hợp đồng', variant: 'destructive' });
