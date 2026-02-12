@@ -64,10 +64,10 @@ export default function EquipmentSelectionPage() {
     setLoading(true);
     try {
       const [pvRes, batRes, invRes, cfgRes] = await Promise.allSettled([
-        api.get<{ recommendations?: Recommendation[]; value?: Recommendation[] }>(`/api/projects/${projectId}/recommend/pv`),
-        api.get<{ recommendations?: Recommendation[]; value?: Recommendation[] }>(`/api/projects/${projectId}/recommend/battery`),
-        api.get<{ recommendations?: Recommendation[]; value?: Recommendation[] }>(`/api/projects/${projectId}/recommend/inverter`),
-        api.get<{ value?: SystemConfig; config?: SystemConfig }>(`/api/projects/${projectId}/system/config`),
+        api.get<{ recommendations?: Recommendation[]; value?: Recommendation[] }>(`/projects/${projectId}/recommend/pv`),
+        api.get<{ recommendations?: Recommendation[]; value?: Recommendation[] }>(`/projects/${projectId}/recommend/battery`),
+        api.get<{ recommendations?: Recommendation[]; value?: Recommendation[] }>(`/projects/${projectId}/recommend/inverter`),
+        api.get<{ value?: SystemConfig; config?: SystemConfig }>(`/projects/${projectId}/system/config`),
       ]);
 
       if (pvRes.status === 'fulfilled') {
@@ -108,7 +108,7 @@ export default function EquipmentSelectionPage() {
     }
     setSaving(true);
     try {
-      await api.post(`/api/projects/${projectId}/system/configure`, {
+      await api.post(`/projects/${projectId}/system/configure`, {
         pv_module_id: selectedPv,
         panel_count: panelCount,
         inverter_id: selectedInverter,

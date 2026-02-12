@@ -38,7 +38,7 @@ export default function HandoversPage() {
 
   const loadHandovers = async () => {
     try {
-      const { data } = await api.get<{ value?: HandoverItem[]; handovers?: HandoverItem[] }>('/api/handovers/v2');
+      const { data } = await api.get<{ value?: HandoverItem[]; handovers?: HandoverItem[] }>('/handovers/v2');
       setHandovers(data.value || data.handovers || []);
     } catch {
       toast({ title: 'Lỗi', description: 'Không tải được danh sách bàn giao', variant: 'destructive' });
