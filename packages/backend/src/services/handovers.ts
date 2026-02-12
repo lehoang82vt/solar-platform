@@ -246,9 +246,9 @@ export async function listHandoversV2(
   filters?: { status?: string; project_id?: string; contract_id?: string; search?: string }
 ): Promise<ListHandoversV2Result> {
   return await withOrgContext(organizationId, async (client) => {
-    const conditions: string[] = [];
-    const params: (number | string)[] = [limit, offset];
-    let paramIndex = 3;
+    const conditions: string[] = [`handovers.organization_id = $1`];
+    const params: (number | string)[] = [organizationId, limit, offset];
+    let paramIndex = 4;
 
     if (filters?.status != null && filters.status.trim() !== '') {
       // Schema 038: handovers doesn't have status, use handover_type instead
@@ -275,10 +275,7 @@ export async function listHandoversV2(
       paramIndex += 1;
     }
 
-    // Add organization filter
-    const orgCondition = `handovers.organization_id = (current_setting('app.current_org_id', true))::uuid`;
-    const allConditions = [orgCondition, ...conditions];
-    const whereClause = allConditions.length > 0 ? ' WHERE ' + allConditions.join(' AND ') : '';
+    const whereClause = conditions.length > 0 ? ' WHERE ' + conditions.join(' AND ') : '';
 
     const result = await client.query(
       `SELECT
@@ -333,8 +330,9 @@ export async function listHandoversV2(
       );
       countParams.push(likePattern);
     }
-    const countOrgCondition = `handovers.organization_id = (current_setting('app.current_org_id', true))::uuid`;
-    const countAllConditions = [countOrgCondition, ...countConditions];
+    countConditions.unshift(`handovers.organization_id = $1`);
+    countParams.unshift(organizationId);
+    const countAllConditions = countConditions;
     const countFrom = `FROM handovers
        LEFT JOIN contracts ON handovers.contract_id = contracts.id
        LEFT JOIN projects ON contracts.project_id = projects.id

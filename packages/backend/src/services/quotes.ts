@@ -643,8 +643,8 @@ export async function getQuoteDetailV2(
       `SELECT q.id, q.status, q.total_vnd as price_total, q.created_at,
         q.customer_name, q.customer_phone, q.customer_email, q.project_id
        FROM quotes q
-       WHERE q.id = $1 AND q.organization_id = (current_setting('app.current_org_id', true))::uuid LIMIT 1`,
-      [id]
+       WHERE q.id = $1 AND q.organization_id = $2 LIMIT 1`,
+      [id, organizationId]
     );
     if (quoteResult.rows.length === 0) {
       return null;

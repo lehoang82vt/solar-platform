@@ -662,9 +662,9 @@ export async function getContractDetailV2(
       if (q.customer_name || q.customer_phone || q.customer_email) {
         const custResult = await client.query(
           `SELECT id, name, phone, email FROM customers 
-           WHERE organization_id = (current_setting('app.current_org_id', true))::uuid
-           AND (name = $1 OR phone = $2 OR email = $3) LIMIT 1`,
-          [q.customer_name || '', q.customer_phone || '', q.customer_email || '']
+           WHERE organization_id = $1
+           AND (name = $2 OR phone = $3 OR email = $4) LIMIT 1`,
+          [organizationId, q.customer_name || '', q.customer_phone || '', q.customer_email || '']
         );
         if (custResult.rows.length > 0) {
           quoteCustomerId = (custResult.rows[0] as { id: string }).id;
