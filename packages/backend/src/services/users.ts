@@ -14,7 +14,7 @@ export interface UserJWT {
   user_id: string;
   organization_id: string;
   email: string;
-  role: 'ADMIN' | 'SALES';
+  role: 'admin' | 'sales' | 'ADMIN' | 'SALES'; // Support both cases for compatibility
 }
 
 const JWT_SECRET = process.env.JWT_SECRET;
