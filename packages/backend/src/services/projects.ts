@@ -332,10 +332,9 @@ export async function listProjectsV3(
         p.address,
         COALESCE(UPPER(TRIM(p.status)), 'NEW') as status,
         p.created_at,
-        cu.id as customer_id,
-        cu.name as customer_name_cu,
-        cu.phone as customer_phone,
-        cu.email as customer_email,
+        qc.customer_name as customer_name_cu,
+        qc.customer_phone as customer_phone,
+        qc.customer_email as customer_email,
         COUNT(DISTINCT q.id)::int as quotes_count,
         COUNT(DISTINCT ctt.id)::int as contracts_count,
         COUNT(DISTINCT h.id)::int as handovers_count

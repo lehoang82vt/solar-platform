@@ -640,11 +640,10 @@ export async function getQuoteDetailV2(
 ): Promise<GetQuoteDetailV2Result | null> {
   return await withOrgContext(organizationId, async (client) => {
     const quoteResult = await client.query(
-      `SELECT q.id, q.customer_id, q.status, q.payload, q.created_at, q.price_total,
-        c.id as cu_id, c.name as cu_name, c.phone as cu_phone, c.email as cu_email
+      `SELECT q.id, q.status, q.total_vnd as price_total, q.created_at,
+        q.customer_name, q.customer_phone, q.customer_email, q.project_id
        FROM quotes q
-       LEFT JOIN customers c ON q.customer_id = c.id
-       WHERE q.id = $1 LIMIT 1`,
+       WHERE q.id = $1 AND q.organization_id = (current_setting('app.current_org_id', true))::uuid LIMIT 1`,
       [id]
     );
     if (quoteResult.rows.length === 0) {
@@ -652,18 +651,15 @@ export async function getQuoteDetailV2(
     }
     const q = quoteResult.rows[0] as {
       id: string;
-      customer_id: string;
       status: string;
-      payload: unknown;
       created_at: string;
       price_total: unknown;
-      cu_id: string | null;
-      cu_name: string | null;
-      cu_phone: string | null;
-      cu_email: string | null;
+      customer_name: string | null;
+      customer_phone: string | null;
+      customer_email: string | null;
+      project_id: string;
     };
-    const payload = (typeof q.payload === 'string' ? JSON.parse(q.payload) : q.payload) as Record<string, unknown>;
-    const projectIdFromPayload = payload?.project_id != null ? String(payload.project_id) : null;
+    const projectIdFromPayload = q.project_id ? String(q.project_id) : null;
 
     const contractResult = await client.query(
       `SELECT id, project_id, contract_number, status FROM contracts WHERE quote_id = $1 LIMIT 1`,
