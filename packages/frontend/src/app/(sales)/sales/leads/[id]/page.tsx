@@ -49,7 +49,7 @@ export default function LeadDetailPage() {
 
   const loadLead = async () => {
     try {
-      const { data } = await api.get<Lead>(`/api/sales/leads/${id}`);
+      const { data } = await api.get<Lead>(`/sales/leads/${id}`);
       setLead(data);
     } catch (error) {
       console.error('Failed to load lead', error);
@@ -67,7 +67,7 @@ export default function LeadDetailPage() {
     if (!lead) return;
     setUpdating(true);
     try {
-      const { data } = await api.patch<Lead>(`/api/sales/leads/${id}`, {
+      const { data } = await api.patch<Lead>(`/sales/leads/${id}`, {
         status: newStatus,
       });
       setLead(data);

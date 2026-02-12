@@ -47,7 +47,7 @@ export default function UsageForm({ projectId, initialData, onSaved }: UsageForm
 
     setSaving(true);
     try {
-      await api.put(`/api/projects/${projectId}/usage`, { monthly_kwh: kwh, day_usage_pct: pct });
+      await api.put(`/projects/${projectId}/usage`, { monthly_kwh: kwh, day_usage_pct: pct });
       toast({ title: 'Đã lưu', description: 'Cập nhật dữ liệu tiêu thụ thành công' });
       onSaved?.();
     } catch {

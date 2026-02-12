@@ -87,7 +87,7 @@ export default function ProjectDetailPage() {
 
   const loadProject = async () => {
     try {
-      const { data } = await api.get<{ value: ProjectDetail }>(`/api/projects/${projectId}`);
+      const { data } = await api.get<{ value: ProjectDetail }>(`/projects/${projectId}`);
       setProject(data.value);
     } catch {
       toast({ title: 'Lỗi', description: 'Không tải được dự án', variant: 'destructive' });
@@ -98,7 +98,7 @@ export default function ProjectDetailPage() {
 
   const loadQuotes = async () => {
     try {
-      const { data } = await api.get<{ value?: QuoteItem[]; quotes?: QuoteItem[] }>('/api/quotes/v2', {
+      const { data } = await api.get<{ value?: QuoteItem[]; quotes?: QuoteItem[] }>('/quotes/v2', {
         params: { project_id: projectId },
       });
       setQuotes(data.value || data.quotes || []);
@@ -107,7 +107,7 @@ export default function ProjectDetailPage() {
 
   const loadContracts = async () => {
     try {
-      const { data } = await api.get<{ value?: ContractItem[]; contracts?: ContractItem[] }>(`/api/projects/${projectId}/contracts`);
+      const { data } = await api.get<{ value?: ContractItem[]; contracts?: ContractItem[] }>(`/projects/${projectId}/contracts`);
       setContracts(data.value || data.contracts || []);
     } catch { /* ignore */ }
   };

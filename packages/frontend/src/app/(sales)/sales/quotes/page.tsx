@@ -52,7 +52,7 @@ export default function SalesQuotesPage() {
     try {
       const params: Record<string, string> = { limit: '50' };
       if (statusFilter !== 'all') params.status = statusFilter;
-      const { data } = await api.get<{ value?: QuoteItem[]; quotes?: QuoteItem[] }>('/api/quotes/v2', { params });
+      const { data } = await api.get<{ value?: QuoteItem[]; quotes?: QuoteItem[] }>('/quotes/v2', { params });
       setQuotes(data.value || data.quotes || []);
     } catch {
       toast({ title: 'Lỗi', description: 'Không tải được danh sách báo giá', variant: 'destructive' });

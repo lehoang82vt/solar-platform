@@ -63,7 +63,7 @@ export default function SalesProjectsPage() {
       const params: Record<string, string> = { limit: '50' };
       if (statusFilter !== 'all') params.status = statusFilter;
       if (search.trim()) params.search = search.trim();
-      const { data } = await api.get<{ value: ProjectItem[]; paging: { count: number } }>('/api/projects/v3', { params });
+      const { data } = await api.get<{ value: ProjectItem[]; paging: { count: number } }>('/projects/v3', { params });
       setProjects(data.value || []);
       setTotalCount(data.paging?.count ?? 0);
     } catch {

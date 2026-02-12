@@ -31,7 +31,7 @@ export default function OTPPage() {
     }
     setLoading(true);
     try {
-      await api.post('/api/public/otp/request', { phone: phoneDigits });
+      await api.post('/public/otp/request', { phone: phoneDigits });
       toast({
         title: 'Đã gửi OTP',
         description: `Mã OTP đã được gửi đến ${phoneDigits}`,
@@ -53,7 +53,7 @@ export default function OTPPage() {
   const verifyOTP = async () => {
     setLoading(true);
     try {
-      await api.post('/api/public/otp/verify', { phone, otp });
+      await api.post('/public/otp/verify', { phone, otp });
       toast({
         title: 'Xác thực thành công',
         description: 'Chúng tôi sẽ liên hệ bạn sớm nhất',

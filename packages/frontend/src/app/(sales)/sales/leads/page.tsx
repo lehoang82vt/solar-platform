@@ -32,7 +32,7 @@ export default function LeadsPage() {
     setLoading(true);
     try {
       const params = statusFilter !== 'all' ? { status: statusFilter } : {};
-      const { data } = await api.get<{ leads: Lead[] }>('/api/sales/leads', { params });
+      const { data } = await api.get<{ leads: Lead[] }>('/sales/leads', { params });
       setLeads(data.leads || []);
     } catch (error) {
       console.error('Failed to load leads', error);

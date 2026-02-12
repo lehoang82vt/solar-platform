@@ -52,7 +52,7 @@ export default function ContractDetailPage() {
 
   const loadContract = async () => {
     try {
-      const { data } = await api.get<{ value?: ContractDetail; contract?: ContractDetail }>(`/api/contracts/${contractId}/v2`);
+      const { data } = await api.get<{ value?: ContractDetail; contract?: ContractDetail }>(`/contracts/${contractId}/v2`);
       setContract(data.value || data.contract || null);
     } catch {
       toast({ title: 'Lỗi', description: 'Không tải được hợp đồng', variant: 'destructive' });
@@ -66,7 +66,7 @@ export default function ContractDetailPage() {
     if (!confirm('Xác nhận ký hợp đồng này?')) return;
     setSigning(true);
     try {
-      await api.post(`/api/projects/${contract.project_id}/contracts/${contractId}/sign`);
+      await api.post(`/projects/${contract.project_id}/contracts/${contractId}/sign`);
       toast({ title: 'Đã ký', description: 'Hợp đồng đã được ký thành công' });
       loadContract();
     } catch (error: unknown) {
@@ -80,7 +80,7 @@ export default function ContractDetailPage() {
   const handleCreateHandover = async () => {
     if (!contract) return;
     try {
-      await api.post(`/api/projects/${contract.project_id}/handovers`, {
+      await api.post(`/projects/${contract.project_id}/handovers`, {
         contract_id: contractId,
       });
       toast({ title: 'Đã tạo', description: 'Bàn giao đã được tạo' });
