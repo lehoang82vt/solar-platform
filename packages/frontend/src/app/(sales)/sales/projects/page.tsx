@@ -17,7 +17,7 @@ interface ProjectItem {
   address: string | null;
   status: string;
   created_at: string;
-  customer: { id: string; name: string; phone: string | null; email: string | null } | null;
+  customer: { name: string; phone: string | null; email: string | null } | null;
   stats: { quotes_count: number; contracts_count: number; handovers_count: number };
 }
 

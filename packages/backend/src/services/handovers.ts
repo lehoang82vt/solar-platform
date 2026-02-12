@@ -175,10 +175,8 @@ export interface HandoverListV2Item {
     customer_name: string;
     address: string | null;
     status: string;
-  };
-  /** Populated when handover has contract_id and that contract has quote_id -> customer; else null (projects table has no customer_id). */
+  } | null;
   customer: {
-    id: string;
     name: string;
     phone: string | null;
     email: string | null;
@@ -212,12 +210,15 @@ export async function listHandoversV2(
     let paramIndex = 3;
 
     if (filters?.status != null && filters.status.trim() !== '') {
-      conditions.push(`LOWER(TRIM(handovers.status)) = LOWER(TRIM($${paramIndex}))`);
-      params.push(filters.status.trim());
-      paramIndex += 1;
+      const statusVal = filters.status.trim().toUpperCase();
+      if (statusVal === 'CANCELLED') {
+        conditions.push(`handovers.cancelled_at IS NOT NULL`);
+      } else {
+        conditions.push(`handovers.cancelled_at IS NULL`);
+      }
     }
     if (filters?.project_id != null && filters.project_id.trim() !== '') {
-      conditions.push(`handovers.project_id = $${paramIndex}`);
+      conditions.push(`contracts.project_id = $${paramIndex}`);
       params.push(filters.project_id.trim());
       paramIndex += 1;
     }
@@ -240,25 +241,22 @@ export async function listHandoversV2(
     const result = await client.query(
       `SELECT
          handovers.id,
-         handovers.status,
+         CASE WHEN handovers.cancelled_at IS NOT NULL THEN 'CANCELLED' ELSE handovers.handover_type END as status,
          handovers.created_at,
-         handovers.updated_at,
+         COALESCE(handovers.cancelled_at, handovers.created_at) as updated_at,
          projects.id as project_id,
          projects.customer_name as project_customer_name,
-         projects.address as project_address,
+         projects.customer_address as project_address,
          projects.status as project_status,
-         customers.id as customer_id,
-         customers.name as customer_name,
-         customers.phone as customer_phone,
-         customers.email as customer_email,
+         projects.customer_name as customer_name,
+         projects.customer_phone as customer_phone,
+         projects.customer_email as customer_email,
          contracts.id as contract_id,
          contracts.contract_number as contract_contract_number,
          contracts.status as contract_status
        FROM handovers
-       JOIN projects ON handovers.project_id = projects.id
        LEFT JOIN contracts ON handovers.contract_id = contracts.id
-       LEFT JOIN quotes ON contracts.quote_id = quotes.id
-       LEFT JOIN customers ON quotes.customer_id = customers.id
+       LEFT JOIN projects ON contracts.project_id = projects.id
        ${whereClause}
        ORDER BY handovers.created_at DESC
        LIMIT $1
@@ -270,12 +268,15 @@ export async function listHandoversV2(
     const countConditions: string[] = [];
     let countParamIndex = 1;
     if (filters?.status != null && filters.status.trim() !== '') {
-      countConditions.push(`LOWER(TRIM(handovers.status)) = LOWER(TRIM($${countParamIndex}))`);
-      countParams.push(filters.status.trim());
-      countParamIndex += 1;
+      const statusVal = filters.status.trim().toUpperCase();
+      if (statusVal === 'CANCELLED') {
+        countConditions.push(`handovers.cancelled_at IS NOT NULL`);
+      } else {
+        countConditions.push(`handovers.cancelled_at IS NULL`);
+      }
     }
     if (filters?.project_id != null && filters.project_id.trim() !== '') {
-      countConditions.push(`handovers.project_id = $${countParamIndex}`);
+      countConditions.push(`contracts.project_id = $${countParamIndex}`);
       countParams.push(filters.project_id.trim());
       countParamIndex += 1;
     }
@@ -292,10 +293,8 @@ export async function listHandoversV2(
       countParams.push(likePattern);
     }
     const countFrom = `FROM handovers
-       JOIN projects ON handovers.project_id = projects.id
        LEFT JOIN contracts ON handovers.contract_id = contracts.id
-       LEFT JOIN quotes ON contracts.quote_id = quotes.id
-       LEFT JOIN customers ON quotes.customer_id = customers.id`;
+       LEFT JOIN projects ON contracts.project_id = projects.id`;
     const countWhereClause =
       countConditions.length > 0 ? ' WHERE ' + countConditions.join(' AND ') : '';
     const countResult = await client.query(
@@ -309,11 +308,10 @@ export async function listHandoversV2(
       status: string;
       created_at: string;
       updated_at: string;
-      project_id: string;
-      project_customer_name: string;
+      project_id: string | null;
+      project_customer_name: string | null;
       project_address: string | null;
-      project_status: string;
-      customer_id: string | null;
+      project_status: string | null;
       customer_name: string | null;
       customer_phone: string | null;
       customer_email: string | null;
@@ -325,21 +323,21 @@ export async function listHandoversV2(
       status: row.status,
       created_at: row.created_at,
       updated_at: row.updated_at,
-      project: {
-        id: row.project_id,
-        customer_name: row.project_customer_name,
-        address: row.project_address,
-        status: row.project_status ?? 'NEW',
-      },
-      customer:
-        row.customer_id != null && row.customer_name != null
-          ? {
-              id: row.customer_id,
-              name: row.customer_name,
-              phone: row.customer_phone,
-              email: row.customer_email,
-            }
-          : null,
+      project: row.project_id != null
+        ? {
+            id: row.project_id,
+            customer_name: row.project_customer_name ?? '',
+            address: row.project_address,
+            status: row.project_status ?? 'NEW',
+          }
+        : null,
+      customer: row.customer_name != null
+        ? {
+            name: row.customer_name,
+            phone: row.customer_phone,
+            email: row.customer_email,
+          }
+        : null,
       contract:
         row.contract_id != null && row.contract_contract_number != null
           ? {

@@ -284,7 +284,7 @@ export interface ProjectListV3Item {
   address: string | null;
   status: string;
   created_at: string;
-  customer: { id: string; name: string; phone: string | null; email: string | null } | null;
+  customer: { name: string; phone: string | null; email: string | null } | null;
   stats: { quotes_count: number; contracts_count: number; handovers_count: number };
 }
 
@@ -317,7 +317,7 @@ export async function listProjectsV3(
     if (filters?.search != null && filters.search.trim() !== '') {
       const likePattern = '%' + filters.search.trim() + '%';
       conditions.push(
-        `(p.customer_name ILIKE $${paramIndex} OR p.address ILIKE $${paramIndex} OR cu.name ILIKE $${paramIndex} OR cu.phone ILIKE $${paramIndex} OR cu.email ILIKE $${paramIndex})`
+        `(p.customer_name ILIKE $${paramIndex} OR p.customer_address ILIKE $${paramIndex} OR p.customer_phone ILIKE $${paramIndex} OR p.customer_email ILIKE $${paramIndex})`
       );
       params.push(likePattern);
       paramIndex += 1;
@@ -329,28 +329,20 @@ export async function listProjectsV3(
       SELECT
         p.id,
         p.customer_name,
-        p.address,
+        p.customer_address as address,
         COALESCE(UPPER(TRIM(p.status)), 'NEW') as status,
         p.created_at,
-        cu.id as customer_id,
-        cu.name as customer_name_cu,
-        cu.phone as customer_phone,
-        cu.email as customer_email,
+        p.customer_phone,
+        p.customer_email,
         COUNT(DISTINCT q.id)::int as quotes_count,
         COUNT(DISTINCT ctt.id)::int as contracts_count,
         COUNT(DISTINCT h.id)::int as handovers_count
       FROM projects p
-      LEFT JOIN quotes q ON q.organization_id = p.organization_id AND q.payload ? 'project_id' AND (q.payload->>'project_id')::uuid = p.id
+      LEFT JOIN quotes q ON q.organization_id = p.organization_id AND q.project_id = p.id
       LEFT JOIN contracts ctt ON ctt.project_id = p.id
-      LEFT JOIN handovers h ON h.project_id = p.id
-      LEFT JOIN LATERAL (
-        SELECT q2.customer_id FROM quotes q2
-        WHERE q2.organization_id = p.organization_id AND q2.payload ? 'project_id' AND (q2.payload->>'project_id')::uuid = p.id
-        ORDER BY q2.id LIMIT 1
-      ) qc ON true
-      LEFT JOIN customers cu ON cu.id = qc.customer_id
+      LEFT JOIN handovers h ON h.contract_id = ctt.id
       WHERE p.organization_id = $1 ${whereClause}
-      GROUP BY p.id, p.customer_name, p.address, p.status, p.created_at, qc.customer_id, cu.id, cu.name, cu.phone, cu.email
+      GROUP BY p.id, p.customer_name, p.customer_address, p.status, p.created_at, p.customer_phone, p.customer_email
       ORDER BY p.created_at DESC
       LIMIT $2 OFFSET $3
     `;
@@ -358,12 +350,6 @@ export async function listProjectsV3(
 
     const countFrom = `
       FROM projects p
-      LEFT JOIN LATERAL (
-        SELECT q2.customer_id FROM quotes q2
-        WHERE q2.organization_id = p.organization_id AND q2.payload ? 'project_id' AND (q2.payload->>'project_id')::uuid = p.id
-        ORDER BY q2.id LIMIT 1
-      ) qc ON true
-      LEFT JOIN customers cu ON cu.id = qc.customer_id
       WHERE p.organization_id = $1
     `;
     const countParams: (string | number)[] = [organizationId];
@@ -377,7 +363,7 @@ export async function listProjectsV3(
     if (filters?.search != null && filters.search.trim() !== '') {
       const likePattern = '%' + filters.search.trim() + '%';
       countConditions.push(
-        `(p.customer_name ILIKE $${countParamIndex} OR p.address ILIKE $${countParamIndex} OR cu.name ILIKE $${countParamIndex} OR cu.phone ILIKE $${countParamIndex} OR cu.email ILIKE $${countParamIndex})`
+        `(p.customer_name ILIKE $${countParamIndex} OR p.customer_address ILIKE $${countParamIndex} OR p.customer_phone ILIKE $${countParamIndex} OR p.customer_email ILIKE $${countParamIndex})`
       );
       countParams.push(likePattern);
     }
@@ -394,8 +380,6 @@ export async function listProjectsV3(
       address: string | null;
       status: string;
       created_at: string;
-      customer_id: string | null;
-      customer_name_cu: string | null;
       customer_phone: string | null;
       customer_email: string | null;
       quotes_count: number;
@@ -407,15 +391,11 @@ export async function listProjectsV3(
       address: row.address,
       status: row.status ?? 'NEW',
       created_at: row.created_at,
-      customer:
-        row.customer_id != null && row.customer_name_cu != null
-          ? {
-              id: row.customer_id,
-              name: row.customer_name_cu,
-              phone: row.customer_phone,
-              email: row.customer_email,
-            }
-          : null,
+      customer: {
+        name: row.customer_name,
+        phone: row.customer_phone,
+        email: row.customer_email,
+      },
       stats: {
         quotes_count: row.quotes_count ?? 0,
         contracts_count: row.contracts_count ?? 0,
