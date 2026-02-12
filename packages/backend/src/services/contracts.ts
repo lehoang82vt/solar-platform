@@ -583,25 +583,34 @@ export async function listContractsV2(
   });
 }
 
-/** F-35: Contract detail v2 (join project, quote, customer, latest handover; optional snapshots). */
+/** F-35: Contract detail v2 (join project, quote; inline customer from project/quote). */
 export interface ContractDetailV2 {
   id: string;
   contract_number: string;
+  version: number;
   status: string;
+  project_id: string;
+  quote_id: string | null;
+  total_vnd: number | null;
+  deposit_percentage: number | null;
+  deposit_vnd: number | null;
+  final_payment_vnd: number | null;
+  warranty_years: number | null;
+  expected_start_date: string | null;
+  expected_completion_date: string | null;
+  customer_signed_at: string | null;
+  company_signed_at: string | null;
+  notes: string | null;
   created_at: string;
+  // Relations
   project: { id: string; customer_name: string; address: string | null; status: string } | null;
-  quote: { id: string; status: string; price_total: number | null; payload: Record<string, unknown> } | null;
-  customer: { id: string; name: string; phone: string | null; email: string | null } | null;
+  quote: { id: string; status: string; total_vnd: number | null } | null;
   handover: { id: string; status: string } | null;
-  customer_snapshot?: Record<string, unknown>;
-  system_snapshot?: Record<string, unknown>;
-  financial_snapshot?: Record<string, unknown>;
-  payment_terms?: unknown;
 }
 
 /**
- * Get contract detail v2 by id (org-scoped). Joins project, quote, customer (via quote), latest handover by project_id.
- * Returns null if contract not found in org. Missing relations → null for that object.
+ * Get contract detail v2 by id (org-scoped). Joins project, quote, latest handover.
+ * Returns null if contract not found in org.
  */
 export async function getContractDetailV2(
   id: string,
@@ -609,8 +618,10 @@ export async function getContractDetailV2(
 ): Promise<ContractDetailV2 | null> {
   return await withOrgContext(organizationId, async (client) => {
     const contractResult = await client.query(
-      `SELECT id, organization_id, project_id, quote_id, contract_number, status, created_at,
-        customer_snapshot, system_snapshot, financial_snapshot, payment_terms
+      `SELECT id, organization_id, project_id, quote_id, contract_number, version, status, created_at,
+        total_vnd, deposit_percentage, deposit_vnd, final_payment_vnd,
+        warranty_years, expected_start_date, expected_completion_date,
+        customer_signed_at, company_signed_at, notes
        FROM contracts WHERE id = $1 LIMIT 1`,
       [id]
     );
@@ -621,19 +632,26 @@ export async function getContractDetailV2(
       id: string;
       organization_id: string;
       project_id: string;
-      quote_id: string;
+      quote_id: string | null;
       contract_number: string;
+      version: number;
       status: string;
       created_at: string;
-      customer_snapshot: unknown;
-      system_snapshot: unknown;
-      financial_snapshot: unknown;
-      payment_terms: unknown;
+      total_vnd: unknown;
+      deposit_percentage: unknown;
+      deposit_vnd: unknown;
+      final_payment_vnd: unknown;
+      warranty_years: unknown;
+      expected_start_date: string | null;
+      expected_completion_date: string | null;
+      customer_signed_at: string | null;
+      company_signed_at: string | null;
+      notes: string | null;
     };
 
     let project: { id: string; customer_name: string; address: string | null; status: string } | null = null;
     const projResult = await client.query(
-      `SELECT id, customer_name, address, COALESCE(status, 'NEW') as status FROM projects WHERE id = $1 LIMIT 1`,
+      `SELECT id, customer_name, customer_address as address, COALESCE(status, 'NEW') as status FROM projects WHERE id = $1 LIMIT 1`,
       [c.project_id]
     );
     if (projResult.rows.length > 0) {
@@ -641,68 +659,53 @@ export async function getContractDetailV2(
       project = { id: p.id, customer_name: p.customer_name, address: p.address, status: p.status };
     }
 
-    let quote: { id: string; status: string; price_total: number | null; payload: Record<string, unknown> } | null = null;
-    let quoteCustomerId: string | null = null;
-    const quoteResult = await client.query(
-      `SELECT id, status, price_total, payload, customer_id FROM quotes WHERE id = $1 LIMIT 1`,
-      [c.quote_id]
-    );
-    if (quoteResult.rows.length > 0) {
-      const q = quoteResult.rows[0] as { id: string; status: string; price_total: unknown; payload: unknown; customer_id: string };
-      quote = {
-        id: q.id,
-        status: q.status,
-        price_total: q.price_total != null ? Number(q.price_total) : null,
-        payload: (typeof q.payload === 'string' ? JSON.parse(q.payload) : q.payload) as Record<string, unknown>,
-      };
-      quoteCustomerId = q.customer_id ?? null;
-    }
-
-    let customer: { id: string; name: string; phone: string | null; email: string | null } | null = null;
-    if (quoteCustomerId) {
-      const custResult = await client.query(
-        `SELECT id, name, phone, email FROM customers WHERE id = $1 LIMIT 1`,
-        [quoteCustomerId]
+    let quote: { id: string; status: string; total_vnd: number | null } | null = null;
+    if (c.quote_id) {
+      const quoteResult = await client.query(
+        `SELECT id, status, total_vnd FROM quotes WHERE id = $1 LIMIT 1`,
+        [c.quote_id]
       );
-      if (custResult.rows.length > 0) {
-        const cu = custResult.rows[0] as { id: string; name: string; phone: string | null; email: string | null };
-        customer = { id: cu.id, name: cu.name, phone: cu.phone, email: cu.email };
+      if (quoteResult.rows.length > 0) {
+        const q = quoteResult.rows[0] as { id: string; status: string; total_vnd: unknown };
+        quote = { id: q.id, status: q.status, total_vnd: q.total_vnd != null ? Number(q.total_vnd) : null };
       }
     }
 
     let handover: { id: string; status: string } | null = null;
     const hoResult = await client.query(
-      `SELECT id, status FROM handovers WHERE project_id = $1 ORDER BY created_at DESC LIMIT 1`,
-      [c.project_id]
+      `SELECT h.id, CASE WHEN h.cancelled_at IS NOT NULL THEN 'CANCELLED' ELSE COALESCE(h.handover_type, 'DRAFT') END as status
+       FROM handovers h
+       WHERE h.contract_id = $1
+       ORDER BY h.created_at DESC LIMIT 1`,
+      [c.id]
     );
     if (hoResult.rows.length > 0) {
       const h = hoResult.rows[0] as { id: string; status: string };
       handover = { id: h.id, status: h.status };
     }
 
-    const out: ContractDetailV2 = {
+    return {
       id: c.id,
       contract_number: c.contract_number,
+      version: c.version ?? 1,
       status: c.status,
+      project_id: c.project_id,
+      quote_id: c.quote_id,
+      total_vnd: c.total_vnd != null ? Number(c.total_vnd) : null,
+      deposit_percentage: c.deposit_percentage != null ? Number(c.deposit_percentage) : null,
+      deposit_vnd: c.deposit_vnd != null ? Number(c.deposit_vnd) : null,
+      final_payment_vnd: c.final_payment_vnd != null ? Number(c.final_payment_vnd) : null,
+      warranty_years: c.warranty_years != null ? Number(c.warranty_years) : null,
+      expected_start_date: c.expected_start_date,
+      expected_completion_date: c.expected_completion_date,
+      customer_signed_at: c.customer_signed_at,
+      company_signed_at: c.company_signed_at,
+      notes: c.notes,
       created_at: c.created_at,
       project,
       quote,
-      customer,
       handover,
     };
-    if (c.customer_snapshot != null && typeof c.customer_snapshot === 'object') {
-      out.customer_snapshot = c.customer_snapshot as Record<string, unknown>;
-    }
-    if (c.system_snapshot != null && typeof c.system_snapshot === 'object') {
-      out.system_snapshot = c.system_snapshot as Record<string, unknown>;
-    }
-    if (c.financial_snapshot != null && typeof c.financial_snapshot === 'object') {
-      out.financial_snapshot = c.financial_snapshot as Record<string, unknown>;
-    }
-    if (c.payment_terms !== undefined && c.payment_terms !== null) {
-      out.payment_terms = c.payment_terms;
-    }
-    return out;
   });
 }
 

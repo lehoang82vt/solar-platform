@@ -608,14 +608,38 @@ export async function getQuoteDetailV3(
 /** F-34: Quote detail v2 response (customer, project, contract, handover joins). */
 export interface QuoteDetailV2 {
   id: string;
+  quote_number: string;
+  version: number;
   status: string;
-  price_total: number | null;
+  customer_name: string | null;
+  customer_phone: string | null;
+  customer_email: string | null;
+  customer_address: string | null;
+  system_size_kwp: number | null;
+  panel_count: number | null;
+  subtotal_vnd: number | null;
+  discount_vnd: number | null;
+  tax_vnd: number | null;
+  total_vnd: number | null;
+  financial_snapshot: Record<string, unknown> | null;
+  notes: string | null;
+  valid_until: string | null;
   created_at: string;
-  customer: { id: string; name: string; phone: string | null; email: string | null } | null;
+  project_id: string | null;
+  line_items: Array<{
+    id: string;
+    item_type: string;
+    description: string;
+    sku: string | null;
+    quantity: number;
+    unit: string | null;
+    unit_price_vnd: number;
+    total_price_vnd: number;
+  }>;
+  // Legacy compatibility
   project: { id: string; customer_name: string; address: string | null; status: string } | null;
   contract: { id: string; contract_number: string; status: string } | null;
   handover: { id: string; status: string } | null;
-  payload: QuotePayload;
 }
 
 /** Result of getQuoteDetailV2 including audit flags. */
@@ -627,8 +651,9 @@ export interface GetQuoteDetailV2Result {
 }
 
 /**
- * Get quote detail v2 (org-safe). Joins: customer (quotes.customer_id), project (payload.project_id or contract.project_id), contract (contracts.quote_id), handover (newest by project_id).
- * Returns null if quote not found. Missing relations → null, no throw.
+ * Get quote detail v2 (org-safe). Uses inline customer data from quotes table.
+ * Joins: project (quotes.project_id), contract (contracts.quote_id), handover (via contract).
+ * Returns null if quote not found.
  */
 export async function getQuoteDetailV2(
   id: string,
@@ -636,10 +661,12 @@ export async function getQuoteDetailV2(
 ): Promise<GetQuoteDetailV2Result | null> {
   return await withOrgContext(organizationId, async (client) => {
     const quoteResult = await client.query(
-      `SELECT q.id, q.customer_id, q.status, q.payload, q.created_at, q.price_total,
-        c.id as cu_id, c.name as cu_name, c.phone as cu_phone, c.email as cu_email
+      `SELECT q.id, q.quote_number, q.version, q.status, q.created_at,
+              q.customer_name, q.customer_phone, q.customer_email, q.customer_address,
+              q.system_size_kwp, q.panel_count,
+              q.subtotal_vnd, q.discount_vnd, q.tax_vnd, q.total_vnd,
+              q.financial_snapshot, q.notes, q.valid_until, q.project_id
        FROM quotes q
-       LEFT JOIN customers c ON q.customer_id = c.id
        WHERE q.id = $1 LIMIT 1`,
       [id]
     );
@@ -648,19 +675,43 @@ export async function getQuoteDetailV2(
     }
     const q = quoteResult.rows[0] as {
       id: string;
-      customer_id: string;
+      quote_number: string;
+      version: number;
       status: string;
-      payload: unknown;
       created_at: string;
-      price_total: unknown;
-      cu_id: string | null;
-      cu_name: string | null;
-      cu_phone: string | null;
-      cu_email: string | null;
+      customer_name: string | null;
+      customer_phone: string | null;
+      customer_email: string | null;
+      customer_address: string | null;
+      system_size_kwp: unknown;
+      panel_count: unknown;
+      subtotal_vnd: unknown;
+      discount_vnd: unknown;
+      tax_vnd: unknown;
+      total_vnd: unknown;
+      financial_snapshot: unknown;
+      notes: string | null;
+      valid_until: string | null;
+      project_id: string | null;
     };
-    const payload = (typeof q.payload === 'string' ? JSON.parse(q.payload) : q.payload) as Record<string, unknown>;
-    const projectIdFromPayload = payload?.project_id != null ? String(payload.project_id) : null;
 
+    // Fetch line items if quote_line_items table exists
+    let lineItems: QuoteDetailV2['line_items'] = [];
+    try {
+      const liResult = await client.query(
+        `SELECT id, item_type, description, sku, quantity, unit, unit_price_vnd, total_price_vnd
+         FROM quote_line_items WHERE quote_id = $1 ORDER BY id`,
+        [id]
+      );
+      lineItems = (liResult.rows as Array<{
+        id: string; item_type: string; description: string; sku: string | null;
+        quantity: number; unit: string | null; unit_price_vnd: number; total_price_vnd: number;
+      }>);
+    } catch { /* table may not exist yet */ }
+
+    const projectId = q.project_id;
+
+    // Fetch related contract
     const contractResult = await client.query(
       `SELECT id, project_id, contract_number, status FROM contracts WHERE quote_id = $1 LIMIT 1`,
       [id]
@@ -669,13 +720,14 @@ export async function getQuoteDetailV2(
       contractResult.rows.length > 0
         ? (contractResult.rows[0] as { id: string; project_id: string; contract_number: string; status: string })
         : null;
-    const projectId = projectIdFromPayload ?? contractRow?.project_id ?? null;
 
+    // Fetch project info
     let project: { id: string; customer_name: string; address: string | null; status: string } | null = null;
-    if (projectId) {
+    const resolvedProjectId = projectId ?? contractRow?.project_id ?? null;
+    if (resolvedProjectId) {
       const projResult = await client.query(
-        `SELECT id, customer_name, address, COALESCE(status, 'NEW') as status FROM projects WHERE id = $1 LIMIT 1`,
-        [projectId]
+        `SELECT id, customer_name, customer_address as address, COALESCE(status, 'NEW') as status FROM projects WHERE id = $1 LIMIT 1`,
+        [resolvedProjectId]
       );
       if (projResult.rows.length > 0) {
         const p = projResult.rows[0] as { id: string; customer_name: string; address: string | null; status: string };
@@ -683,11 +735,16 @@ export async function getQuoteDetailV2(
       }
     }
 
+    // Fetch latest handover
     let handover: { id: string; status: string } | null = null;
-    if (projectId) {
+    if (resolvedProjectId) {
       const hoResult = await client.query(
-        `SELECT id, status FROM handovers WHERE project_id = $1 ORDER BY created_at DESC LIMIT 1`,
-        [projectId]
+        `SELECT h.id, CASE WHEN h.cancelled_at IS NOT NULL THEN 'CANCELLED' ELSE COALESCE(h.handover_type, 'DRAFT') END as status
+         FROM handovers h
+         JOIN contracts c ON h.contract_id = c.id
+         WHERE c.project_id = $1
+         ORDER BY h.created_at DESC LIMIT 1`,
+        [resolvedProjectId]
       );
       if (hoResult.rows.length > 0) {
         const h = hoResult.rows[0] as { id: string; status: string };
@@ -695,35 +752,39 @@ export async function getQuoteDetailV2(
       }
     }
 
-    const customer =
-      q.cu_id != null && q.cu_name != null
-        ? {
-            id: q.cu_id,
-            name: q.cu_name,
-            phone: q.cu_phone,
-            email: q.cu_email,
-          }
-        : null;
-
     const contract =
       contractRow != null
-        ? {
-            id: contractRow.id,
-            contract_number: contractRow.contract_number,
-            status: contractRow.status,
-          }
+        ? { id: contractRow.id, contract_number: contractRow.contract_number, status: contractRow.status }
         : null;
+
+    const financialSnapshot = q.financial_snapshot
+      ? (typeof q.financial_snapshot === 'string' ? JSON.parse(q.financial_snapshot) : q.financial_snapshot) as Record<string, unknown>
+      : null;
 
     const quote: QuoteDetailV2 = {
       id: q.id,
+      quote_number: q.quote_number,
+      version: q.version ?? 1,
       status: q.status,
-      price_total: q.price_total != null ? Number(q.price_total) : null,
+      customer_name: q.customer_name,
+      customer_phone: q.customer_phone,
+      customer_email: q.customer_email,
+      customer_address: q.customer_address,
+      system_size_kwp: q.system_size_kwp != null ? Number(q.system_size_kwp) : null,
+      panel_count: q.panel_count != null ? Number(q.panel_count) : null,
+      subtotal_vnd: q.subtotal_vnd != null ? Number(q.subtotal_vnd) : null,
+      discount_vnd: q.discount_vnd != null ? Number(q.discount_vnd) : null,
+      tax_vnd: q.tax_vnd != null ? Number(q.tax_vnd) : null,
+      total_vnd: q.total_vnd != null ? Number(q.total_vnd) : null,
+      financial_snapshot: financialSnapshot,
+      notes: q.notes,
+      valid_until: q.valid_until,
       created_at: q.created_at,
-      customer,
+      project_id: resolvedProjectId,
+      line_items: lineItems,
       project,
       contract,
       handover,
-      payload: payload as QuotePayload,
     };
 
     return {

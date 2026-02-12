@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -15,7 +15,7 @@ import {
 } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { api } from '@/lib/api';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, FolderPlus } from 'lucide-react';
 
 interface Lead {
   id: string;
@@ -35,11 +35,12 @@ const STATUS_OPTIONS = [
 
 export default function LeadDetailPage() {
   const params = useParams();
-  // const router = useRouter();  // Reserved for future use
+  const router = useRouter();
   const { toast } = useToast();
   const [lead, setLead] = useState<Lead | null>(null);
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
+  const [creatingProject, setCreatingProject] = useState(false);
 
   const id = params.id as string;
 
@@ -83,6 +84,30 @@ export default function LeadDetailPage() {
       });
     } finally {
       setUpdating(false);
+    }
+  };
+
+  const handleCreateProject = async () => {
+    if (!lead) return;
+    setCreatingProject(true);
+    try {
+      const { data } = await api.post<{ id: string }>('/projects/from-lead', {
+        lead_id: lead.id,
+      });
+      toast({
+        title: 'Đã tạo dự án',
+        description: 'Dự án đã được tạo từ lead thành công',
+      });
+      router.push(`/sales/projects/${data.id}`);
+    } catch (error: unknown) {
+      const err = error as { response?: { data?: { error?: string } } };
+      toast({
+        title: 'Lỗi',
+        description: err.response?.data?.error || 'Không thể tạo dự án từ lead',
+        variant: 'destructive',
+      });
+    } finally {
+      setCreatingProject(false);
     }
   };
 
@@ -170,10 +195,13 @@ export default function LeadDetailPage() {
                   </SelectContent>
                 </Select>
               </div>
-              <Button className="w-full" asChild>
-                <Link href={`/sales/projects?from_lead=${lead.id}`}>
-                  Tạo dự án
-                </Link>
+              <Button
+                className="w-full"
+                onClick={handleCreateProject}
+                disabled={creatingProject || lead.status === 'LOST'}
+              >
+                <FolderPlus className="w-4 h-4 mr-2" />
+                {creatingProject ? 'Đang tạo...' : 'Tạo dự án'}
               </Button>
             </div>
           </Card>

@@ -1971,11 +1971,11 @@ app.get('/api/contracts/:id/v2', requireAuth, async (req: Request, res: Response
         has_project: detail.project != null,
         has_quote: detail.quote != null,
         has_handover: detail.handover != null,
-        has_customer: detail.customer != null,
+        has_customer: detail.project != null,
       },
     });
 
-    res.status(200).json(detail);
+    res.status(200).json({ value: detail, contract: detail });
   } catch (error) {
     console.error('Get contract v2 error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -2729,7 +2729,7 @@ app.get('/api/quotes/:id/v2', requireAuth, async (req: Request, res: Response) =
       },
     });
 
-    res.status(200).json(result.quote);
+    res.status(200).json({ value: result.quote, quote: result.quote });
   } catch (error) {
     console.error('Get quote v2 error:', error);
     res.status(500).json({ error: 'Internal server error' });

@@ -11,7 +11,7 @@ import { useToast } from '@/hooks/use-toast';
 import UsageForm from '@/components/forms/UsageForm';
 import RoofForm from '@/components/forms/RoofForm';
 import {
-  ArrowLeft, ClipboardList, Cpu, FileText, ScrollText,
+  ArrowLeft, ClipboardList, Cpu, FileText, ScrollText, Plus,
 } from 'lucide-react';
 
 interface ProjectDetail {
@@ -19,7 +19,7 @@ interface ProjectDetail {
   customer_name: string | null;
   customer_phone: string | null;
   customer_email: string | null;
-  address: string | null;
+  customer_address: string | null;
   status: string;
   monthly_kwh: number | null;
   day_usage_pct: number | null;
@@ -75,6 +75,7 @@ export default function ProjectDetailPage() {
   const [activeTab, setActiveTab] = useState<TabKey>('survey');
   const [quotes, setQuotes] = useState<QuoteItem[]>([]);
   const [contracts, setContracts] = useState<ContractItem[]>([]);
+  const [creatingQuote, setCreatingQuote] = useState(false);
 
   useEffect(() => {
     loadProject();
@@ -112,6 +113,29 @@ export default function ProjectDetailPage() {
     } catch { /* ignore */ }
   };
 
+  const handleCreateQuote = async () => {
+    setCreatingQuote(true);
+    try {
+      const { data } = await api.post<{ id?: string; quote?: { id: string } }>(`/projects/${projectId}/quotes`);
+      const quoteId = data.id || data.quote?.id;
+      toast({ title: 'Đã tạo', description: 'Báo giá đã được tạo thành công' });
+      if (quoteId) {
+        router.push(`/sales/quotes/${quoteId}`);
+      } else {
+        loadQuotes();
+      }
+    } catch (error: unknown) {
+      const err = error as { response?: { data?: { error?: string } } };
+      toast({
+        title: 'Lỗi',
+        description: err.response?.data?.error || 'Không thể tạo báo giá. Hãy chọn thiết bị trước.',
+        variant: 'destructive',
+      });
+    } finally {
+      setCreatingQuote(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -142,7 +166,7 @@ export default function ProjectDetailPage() {
           </h1>
           <div className="flex items-center gap-3 mt-1 text-sm text-gray-500">
             {project.customer_phone && <span>{project.customer_phone}</span>}
-            {project.address && <span>· {project.address}</span>}
+            {project.customer_address && <span>· {project.customer_address}</span>}
           </div>
         </div>
         <Badge className={STATUS_COLORS[project.status] || 'bg-gray-100 text-gray-700'}>
@@ -202,6 +226,10 @@ export default function ProjectDetailPage() {
         <div>
           <div className="flex justify-between items-center mb-4">
             <h3 className="text-lg font-semibold">Báo giá ({quotes.length})</h3>
+            <Button onClick={handleCreateQuote} disabled={creatingQuote} size="sm">
+              <Plus className="w-4 h-4 mr-1" />
+              {creatingQuote ? 'Đang tạo...' : 'Tạo báo giá'}
+            </Button>
           </div>
           {quotes.length === 0 ? (
             <Card className="p-8 text-center text-gray-500">Chưa có báo giá nào</Card>

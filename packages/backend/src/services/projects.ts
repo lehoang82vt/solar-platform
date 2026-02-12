@@ -162,7 +162,9 @@ export async function getProjectByIdOrgSafe(
     }
 
     const result = await client.query(
-      `SELECT id, customer_id, customer_name, address, created_at, status FROM projects WHERE ${where}`,
+      `SELECT id, customer_name, customer_phone, customer_email, customer_address, created_at, status, lead_id,
+              monthly_kwh, day_usage_pct, night_kwh, storage_target_kwh
+       FROM projects WHERE ${where}`,
       [id]
     );
     if (result.rows.length === 0) {
@@ -170,20 +172,36 @@ export async function getProjectByIdOrgSafe(
     }
     const row = result.rows[0] as {
       id: string;
-      customer_id: string | null;
       customer_name: string;
-      address: string | null;
+      customer_phone: string | null;
+      customer_email: string | null;
+      customer_address: string | null;
       created_at: string;
       status?: string;
+      lead_id?: string | null;
+      monthly_kwh?: number | null;
+      day_usage_pct?: number | null;
+      night_kwh?: number | null;
+      storage_target_kwh?: number | null;
     };
     return {
       id: row.id,
-      customer_id: row.customer_id,
+      customer_id: null,
       name: row.customer_name,
-      address: row.address,
+      address: row.customer_address,
       notes: null,
       status: (row.status && row.status.toUpperCase()) || 'NEW',
       created_at: row.created_at,
+      // Extended fields for project detail page
+      customer_name: row.customer_name,
+      customer_phone: row.customer_phone,
+      customer_email: row.customer_email,
+      customer_address: row.customer_address,
+      lead_id: row.lead_id || null,
+      monthly_kwh: row.monthly_kwh ?? null,
+      day_usage_pct: row.day_usage_pct ?? null,
+      night_kwh: row.night_kwh ?? null,
+      storage_target_kwh: row.storage_target_kwh ?? null,
     };
   });
 }
@@ -195,7 +213,7 @@ export async function getProjectById(id: string): Promise<Project | null> {
   }
 
   const result = await pool.query(
-    'SELECT id, customer_id, customer_name, address, created_at FROM projects WHERE id = $1',
+    'SELECT id, customer_name, customer_address as address, created_at FROM projects WHERE id = $1',
     [id]
   );
 
