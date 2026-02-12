@@ -312,7 +312,8 @@ export async function listHandoversV2(
 
     const value = (result.rows as Array<{
       id: string;
-      status: string;
+      handover_type: string;
+      handover_date: string;
       created_at: string;
       updated_at: string;
       project_id: string;
@@ -327,7 +328,7 @@ export async function listHandoversV2(
       contract_status: string | null;
     }>).map((row) => ({
       id: row.id,
-      status: row.status,
+      status: row.handover_type, // Schema 038: use handover_type as status
       created_at: row.created_at,
       updated_at: row.updated_at,
       project: {
