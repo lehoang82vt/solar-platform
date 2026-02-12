@@ -2,8 +2,8 @@ module.exports = {
   apps: [
     {
       name: 'solar-backend',
-      cwd: '/var/www/solar/packages/backend',
-      script: 'dist/server.js',
+      cwd: '/var/www/solar',
+      script: 'dist/packages/backend/src/server.js',
       instances: 1,
       exec_mode: 'cluster',
       autorestart: true,
