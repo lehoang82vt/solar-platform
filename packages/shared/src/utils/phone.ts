@@ -19,7 +19,7 @@ export function normalizePhone(input: string): string {
     throw new PhoneError('Phone number is required');
   }
 
-  let cleaned = input.replace(/[\s\-()]/g, '');
+  const cleaned = input.replace(/[\s\-()]/g, '');
 
   if (!cleaned) {
     throw new PhoneError('Phone number cannot be empty');

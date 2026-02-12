@@ -1,15 +1,14 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/stores/authStore';
+import { API_BASE_URL } from '@/lib/constants';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 
 export default function LoginPage() {
-  const router = useRouter();
   const setAuth = useAuthStore((s) => s.setAuth);
 
   const [email, setEmail] = useState('');
@@ -23,8 +22,7 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || '/api';
-      const response = await fetch(`${apiUrl}/auth/login`, {
+      const response = await fetch(`${API_BASE_URL}/auth/login`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -41,14 +39,18 @@ export default function LoginPage() {
       // Store auth data
       setAuth(data.user, data.token);
 
+      // Wait a bit for state to persist, then redirect
+      // Use window.location for full page reload to ensure state hydration
+      await new Promise(resolve => setTimeout(resolve, 200));
+
       // Redirect based on role (case-insensitive)
       const role = data.user.role?.toLowerCase();
       if (role === 'admin' || role === 'super_admin') {
-        router.push('/admin');
+        window.location.href = '/admin';
       } else if (role === 'sales') {
-        router.push('/sales');
+        window.location.href = '/sales';
       } else {
-        router.push('/');
+        window.location.href = '/';
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Invalid email or password');

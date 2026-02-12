@@ -1,7 +1,6 @@
 'use client';
 
 import { useState } from 'react';
-import Link from 'next/link';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -9,9 +8,9 @@ import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { useAuthStore } from '@/stores/authStore';
 import { API_BASE_URL } from '@/lib/constants';
-import { Key, DollarSign, ArrowRight } from 'lucide-react';
+import { Key } from 'lucide-react';
 
-export default function AdminSettingsPage() {
+export default function SalesSettingsPage() {
   const { toast } = useToast();
   const { user, token } = useAuthStore();
   const [oldPassword, setOldPassword] = useState('');
@@ -22,7 +21,6 @@ export default function AdminSettingsPage() {
   const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    // Validation
     if (!oldPassword || !newPassword || !confirmPassword) {
       toast({
         title: 'Lỗi',
@@ -51,7 +49,6 @@ export default function AdminSettingsPage() {
     }
 
     setLoading(true);
-
     try {
       const response = await fetch(`${API_BASE_URL}/auth/change-password`, {
         method: 'POST',
@@ -59,24 +56,15 @@ export default function AdminSettingsPage() {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`,
         },
-        body: JSON.stringify({
-          oldPassword,
-          newPassword,
-        }),
+        body: JSON.stringify({ oldPassword, newPassword }),
       });
 
       const data = await response.json();
-
       if (!response.ok) {
         throw new Error(data.error || 'Không thể đổi mật khẩu');
       }
 
-      toast({
-        title: 'Thành công',
-        description: 'Đã đổi mật khẩu thành công',
-      });
-
-      // Clear form
+      toast({ title: 'Thành công', description: 'Đã đổi mật khẩu thành công' });
       setOldPassword('');
       setNewPassword('');
       setConfirmPassword('');
@@ -95,76 +83,34 @@ export default function AdminSettingsPage() {
     <div className="max-w-2xl">
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-gray-900">Cài đặt</h1>
-        <p className="text-muted-foreground mt-2">
-          Quản lý thông tin tài khoản và bảo mật
-        </p>
+        <p className="text-muted-foreground mt-2">Quản lý thông tin tài khoản và bảo mật</p>
       </div>
 
       <div className="space-y-6">
-        {/* Quick Links */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Cài đặt hệ thống</CardTitle>
-            <CardDescription>
-              Truy cập nhanh các trang cấu hình
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="grid gap-3">
-            <Link href="/admin/settings/financial">
-              <div className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50 transition-colors cursor-pointer">
-                <div className="flex items-center gap-3">
-                  <DollarSign className="w-5 h-5 text-green-600" />
-                  <div>
-                    <p className="font-medium">Cấu hình tài chính</p>
-                    <p className="text-sm text-muted-foreground">Margin, chi phí cứng/mềm, ngưỡng lợi nhuận</p>
-                  </div>
-                </div>
-                <ArrowRight className="w-5 h-5 text-gray-400" />
-              </div>
-            </Link>
-          </CardContent>
-        </Card>
-
-        {/* Account Info */}
         <Card>
           <CardHeader>
             <CardTitle>Thông tin tài khoản</CardTitle>
-            <CardDescription>
-              Thông tin cơ bản về tài khoản của bạn
-            </CardDescription>
+            <CardDescription>Xem thông tin tài khoản hiện tại</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-2 gap-4 text-sm">
-              <div>
-                <Label className="text-muted-foreground">Email</Label>
-                <p className="font-medium mt-1">{user?.email || '—'}</p>
-              </div>
-              <div>
-                <Label className="text-muted-foreground">Họ tên</Label>
-                <p className="font-medium mt-1">{user?.full_name || '—'}</p>
-              </div>
-              <div>
-                <Label className="text-muted-foreground">Vai trò</Label>
-                <p className="font-medium mt-1 capitalize">{user?.role || '—'}</p>
-              </div>
-              <div>
-                <Label className="text-muted-foreground">User ID</Label>
-                <p className="font-mono text-xs mt-1">{user?.id || '—'}</p>
-              </div>
+          <CardContent className="space-y-2">
+            <div className="text-sm">
+              <span className="text-muted-foreground">Họ tên:</span>{' '}
+              <span className="font-medium">{user?.full_name || '-'}</span>
+            </div>
+            <div className="text-sm">
+              <span className="text-muted-foreground">Email:</span>{' '}
+              <span className="font-medium">{user?.email || '-'}</span>
             </div>
           </CardContent>
         </Card>
 
-        {/* Change Password */}
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Key className="w-5 h-5" />
-              Đổi mật khẩu
-            </CardTitle>
-            <CardDescription>
-              Thay đổi mật khẩu đăng nhập của bạn
-            </CardDescription>
+            <div className="flex items-center gap-2">
+              <Key className="w-5 h-5 text-blue-600" />
+              <CardTitle>Đổi mật khẩu</CardTitle>
+            </div>
+            <CardDescription>Thay đổi mật khẩu đăng nhập của bạn</CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleChangePassword} className="space-y-4">
@@ -173,9 +119,9 @@ export default function AdminSettingsPage() {
                 <Input
                   id="oldPassword"
                   type="password"
-                  placeholder="••••••••"
                   value={oldPassword}
                   onChange={(e) => setOldPassword(e.target.value)}
+                  placeholder="Nhập mật khẩu hiện tại"
                   disabled={loading}
                   required
                 />
@@ -186,15 +132,13 @@ export default function AdminSettingsPage() {
                 <Input
                   id="newPassword"
                   type="password"
-                  placeholder="••••••••"
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
+                  placeholder="Nhập mật khẩu mới"
                   disabled={loading}
                   required
+                  minLength={8}
                 />
-                <p className="text-xs text-muted-foreground">
-                  Mật khẩu phải có ít nhất 8 ký tự
-                </p>
               </div>
 
               <div className="space-y-2">
@@ -202,19 +146,16 @@ export default function AdminSettingsPage() {
                 <Input
                   id="confirmPassword"
                   type="password"
-                  placeholder="••••••••"
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
+                  placeholder="Nhập lại mật khẩu mới"
                   disabled={loading}
                   required
+                  minLength={8}
                 />
               </div>
 
-              <Button
-                type="submit"
-                disabled={loading}
-                className="w-full sm:w-auto"
-              >
+              <Button type="submit" disabled={loading} className="w-full sm:w-auto">
                 {loading ? 'Đang xử lý...' : 'Đổi mật khẩu'}
               </Button>
             </form>
@@ -224,3 +165,4 @@ export default function AdminSettingsPage() {
     </div>
   );
 }
+
