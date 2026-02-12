@@ -3,11 +3,11 @@ import { getProjectByIdOrgSafe } from './projects';
 import { listContractsByProject } from './contracts';
 import { CONTRACT_STATUS } from './contracts';
 
-/** Handover status stored UPPERCASE. */
-export const HANDOVER_STATUS = {
-  DRAFT: 'DRAFT',
-  SIGNED: 'SIGNED',
-  COMPLETED: 'COMPLETED',
+/** Handover type (schema 038 doesn't have status, only handover_type). */
+export const HANDOVER_TYPE = {
+  INSTALLATION: 'INSTALLATION',
+  COMMISSIONING: 'COMMISSIONING',
+  FINAL: 'FINAL',
 } as const;
 
 const ACCEPTANCE_REQUIRED_KEYS = ['site_address', 'handover_date', 'representative_a', 'representative_b', 'checklist'] as const;
@@ -46,16 +46,18 @@ function validateAcceptanceJson(acceptance_json: unknown): { ok: true } | { ok: 
 export interface HandoverRow {
   id: string;
   organization_id: string;
-  project_id: string;
-  contract_id: string | null;
-  status: string;
-  acceptance_json: Record<string, unknown>;
-  signed_at: string | null;
-  signed_by: string | null;
-  completed_at: string | null;
-  completed_by: string | null;
+  project_id?: string; // Schema 038: not directly in handovers, get via contract
+  contract_id: string;
+  status?: string; // Schema 038: use handover_type instead
+  handover_type?: string; // Schema 038
+  acceptance_json?: Record<string, unknown>; // Schema 038: use checklist instead
+  checklist?: Record<string, unknown>; // Schema 038
+  signed_at?: string | null;
+  signed_by?: string | null;
+  completed_at?: string | null;
+  completed_by?: string | null;
   created_at: string;
-  updated_at: string;
+  updated_at?: string; // Schema 038: doesn't have updated_at
 }
 
 export type CreateHandoverResult =
@@ -212,12 +214,13 @@ export async function listHandoversV2(
     let paramIndex = 3;
 
     if (filters?.status != null && filters.status.trim() !== '') {
-      conditions.push(`LOWER(TRIM(handovers.status)) = LOWER(TRIM($${paramIndex}))`);
+      // Schema 038: handovers doesn't have status, use handover_type instead
+      conditions.push(`LOWER(TRIM(handovers.handover_type)) = LOWER(TRIM($${paramIndex}))`);
       params.push(filters.status.trim());
       paramIndex += 1;
     }
     if (filters?.project_id != null && filters.project_id.trim() !== '') {
-      conditions.push(`handovers.project_id = $${paramIndex}`);
+      conditions.push(`contracts.project_id = $${paramIndex}`);
       params.push(filters.project_id.trim());
       paramIndex += 1;
     }
@@ -243,9 +246,10 @@ export async function listHandoversV2(
     const result = await client.query(
       `SELECT
          handovers.id,
-         handovers.status,
+         handovers.handover_type,
+         handovers.handover_date,
          handovers.created_at,
-         handovers.updated_at,
+         handovers.created_at as updated_at,
          projects.id as project_id,
          projects.customer_name as project_customer_name,
          projects.address as project_address,
@@ -257,8 +261,8 @@ export async function listHandoversV2(
          contracts.contract_number as contract_contract_number,
          contracts.status as contract_status
        FROM handovers
-       JOIN projects ON handovers.project_id = projects.id
        LEFT JOIN contracts ON handovers.contract_id = contracts.id
+       LEFT JOIN projects ON contracts.project_id = projects.id
        LEFT JOIN quotes ON contracts.quote_id = quotes.id
        ${whereClause}
        ORDER BY handovers.created_at DESC
@@ -271,12 +275,12 @@ export async function listHandoversV2(
     const countConditions: string[] = [];
     let countParamIndex = 1;
     if (filters?.status != null && filters.status.trim() !== '') {
-      countConditions.push(`LOWER(TRIM(handovers.status)) = LOWER(TRIM($${countParamIndex}))`);
+      countConditions.push(`LOWER(TRIM(handovers.handover_type)) = LOWER(TRIM($${countParamIndex}))`);
       countParams.push(filters.status.trim());
       countParamIndex += 1;
     }
     if (filters?.project_id != null && filters.project_id.trim() !== '') {
-      countConditions.push(`handovers.project_id = $${countParamIndex}`);
+      countConditions.push(`contracts.project_id = $${countParamIndex}`);
       countParams.push(filters.project_id.trim());
       countParamIndex += 1;
     }
@@ -295,10 +299,9 @@ export async function listHandoversV2(
     const countOrgCondition = `handovers.organization_id = (current_setting('app.current_org_id', true))::uuid`;
     const countAllConditions = [countOrgCondition, ...countConditions];
     const countFrom = `FROM handovers
-       JOIN projects ON handovers.project_id = projects.id
        LEFT JOIN contracts ON handovers.contract_id = contracts.id
+       LEFT JOIN projects ON contracts.project_id = projects.id
        LEFT JOIN quotes ON contracts.quote_id = quotes.id`;
-    const countAllConditions = [countOrgCondition, ...countConditions];
     const countWhereClause =
       countAllConditions.length > 0 ? ' WHERE ' + countAllConditions.join(' AND ') : '';
     const countResult = await client.query(

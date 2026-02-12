@@ -528,7 +528,7 @@ export async function listContractsV2(
          contracts.id,
          contracts.contract_number,
          contracts.status,
-         contracts.contract_value,
+         contracts.total_vnd as contract_value,
          contracts.created_at,
          projects.id as project_id,
          projects.customer_name,

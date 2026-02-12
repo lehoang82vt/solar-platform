@@ -358,12 +358,6 @@ export async function listProjectsV3(
 
     const countFrom = `
       FROM projects p
-      LEFT JOIN LATERAL (
-        SELECT q2.customer_id FROM quotes q2
-        WHERE q2.organization_id = p.organization_id AND q2.project_id = p.id
-        ORDER BY q2.id LIMIT 1
-      ) qc ON true
-      LEFT JOIN customers cu ON cu.id = qc.customer_id
       WHERE p.organization_id = $1
     `;
     const countParams: (string | number)[] = [organizationId];
@@ -377,7 +371,7 @@ export async function listProjectsV3(
     if (filters?.search != null && filters.search.trim() !== '') {
       const likePattern = '%' + filters.search.trim() + '%';
       countConditions.push(
-        `(p.customer_name ILIKE $${countParamIndex} OR p.address ILIKE $${countParamIndex} OR cu.name ILIKE $${countParamIndex} OR cu.phone ILIKE $${countParamIndex} OR cu.email ILIKE $${countParamIndex})`
+        `(p.customer_name ILIKE $${countParamIndex} OR p.address ILIKE $${countParamIndex})`
       );
       countParams.push(likePattern);
     }
