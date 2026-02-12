@@ -283,8 +283,8 @@ export interface QuoteListV2Item {
   price_total: number | null;
   created_at: string;
   customer: {
-    id: string;
-    name: string;
+    id: string | null;
+    name: string | null;
     phone: string | null;
     email: string | null;
   };
@@ -318,26 +318,25 @@ export async function listQuotesV2(
     if (filters?.search != null && filters.search.trim() !== '') {
       const likePattern = '%' + filters.search.trim() + '%';
       conditions.push(
-        `(customers.name ILIKE $${paramIndex} OR customers.phone ILIKE $${paramIndex} OR customers.email ILIKE $${paramIndex})`
+        `(quotes.customer_name ILIKE $${paramIndex} OR quotes.customer_phone ILIKE $${paramIndex} OR quotes.customer_email ILIKE $${paramIndex} OR quotes.quote_number ILIKE $${paramIndex})`
       );
       params.push(likePattern);
       paramIndex += 1;
     }
 
-    const whereClause = conditions.length > 0 ? ' WHERE ' + conditions.join(' AND ') : '';
+    const whereClause = conditions.length > 0 ? ' AND ' + conditions.join(' AND ') : '';
 
     const result = await client.query(
       `SELECT 
          quotes.id,
          quotes.status,
-         quotes.price_total,
+         quotes.total_vnd as price_total,
          quotes.created_at,
-         customers.id as customer_id,
-         customers.name as customer_name,
-         customers.phone as customer_phone,
-         customers.email as customer_email
+         quotes.customer_name,
+         quotes.customer_phone,
+         quotes.customer_email
        FROM quotes
-       JOIN customers ON quotes.customer_id = customers.id
+       WHERE quotes.organization_id = (current_setting('app.current_org_id', true))::uuid
        ${whereClause}
        ORDER BY quotes.created_at DESC
        LIMIT $1
@@ -356,17 +355,14 @@ export async function listQuotesV2(
     if (filters?.search != null && filters.search.trim() !== '') {
       const likePattern = '%' + filters.search.trim() + '%';
       countConditions.push(
-        `(customers.name ILIKE $${countParamIndex} OR customers.phone ILIKE $${countParamIndex} OR customers.email ILIKE $${countParamIndex})`
+        `(quotes.customer_name ILIKE $${countParamIndex} OR quotes.customer_phone ILIKE $${countParamIndex} OR quotes.customer_email ILIKE $${countParamIndex} OR quotes.quote_number ILIKE $${countParamIndex})`
       );
       countParams.push(likePattern);
       countParamIndex += 1;
     }
-    const countWhere =
-      countConditions.length > 0
-        ? ' FROM quotes JOIN customers ON quotes.customer_id = customers.id WHERE ' + countConditions.join(' AND ')
-        : ' FROM quotes';
+    const countWhereClause = countConditions.length > 0 ? ' AND ' + countConditions.join(' AND ') : '';
     const countResult = await client.query(
-      `SELECT COUNT(*)::int ${countWhere}`,
+      `SELECT COUNT(*)::int FROM quotes WHERE quotes.organization_id = (current_setting('app.current_org_id', true))::uuid ${countWhereClause}`,
       countParams.length > 0 ? countParams : undefined
     );
     const count = parseInt(String(countResult.rows[0].count), 10);
@@ -376,8 +372,7 @@ export async function listQuotesV2(
       status: string;
       price_total: unknown;
       created_at: string;
-      customer_id: string;
-      customer_name: string;
+      customer_name: string | null;
       customer_phone: string | null;
       customer_email: string | null;
     }>).map((row) => ({
@@ -386,7 +381,7 @@ export async function listQuotesV2(
       price_total: row.price_total != null ? Number(row.price_total) : null,
       created_at: row.created_at,
       customer: {
-        id: row.customer_id,
+        id: null, // Quotes v2 schema doesn't have customer_id, only snapshot
         name: row.customer_name,
         phone: row.customer_phone,
         email: row.customer_email,

@@ -176,10 +176,10 @@ export interface HandoverListV2Item {
     address: string | null;
     status: string;
   };
-  /** Populated when handover has contract_id and that contract has quote_id -> customer; else null (projects table has no customer_id). */
+  /** Populated when handover has contract_id and that contract has quote_id -> customer snapshot; else null (projects table has no customer_id). */
   customer: {
-    id: string;
-    name: string;
+    id: string | null;
+    name: string | null;
     phone: string | null;
     email: string | null;
   } | null;
@@ -229,13 +229,16 @@ export async function listHandoversV2(
     if (filters?.search != null && filters.search.trim() !== '') {
       const likePattern = '%' + filters.search.trim() + '%';
       conditions.push(
-        `(projects.customer_name ILIKE $${paramIndex} OR contracts.contract_number ILIKE $${paramIndex})`
+        `(projects.customer_name ILIKE $${paramIndex} OR contracts.contract_number ILIKE $${paramIndex} OR quotes.customer_name ILIKE $${paramIndex} OR quotes.customer_phone ILIKE $${paramIndex})`
       );
       params.push(likePattern);
       paramIndex += 1;
     }
 
-    const whereClause = conditions.length > 0 ? ' WHERE ' + conditions.join(' AND ') : '';
+    // Add organization filter
+    const orgCondition = `handovers.organization_id = (current_setting('app.current_org_id', true))::uuid`;
+    const allConditions = [orgCondition, ...conditions];
+    const whereClause = allConditions.length > 0 ? ' WHERE ' + allConditions.join(' AND ') : '';
 
     const result = await client.query(
       `SELECT
@@ -247,10 +250,9 @@ export async function listHandoversV2(
          projects.customer_name as project_customer_name,
          projects.address as project_address,
          projects.status as project_status,
-         customers.id as customer_id,
-         customers.name as customer_name,
-         customers.phone as customer_phone,
-         customers.email as customer_email,
+         quotes.customer_name as customer_name,
+         quotes.customer_phone as customer_phone,
+         quotes.customer_email as customer_email,
          contracts.id as contract_id,
          contracts.contract_number as contract_contract_number,
          contracts.status as contract_status
@@ -258,7 +260,6 @@ export async function listHandoversV2(
        JOIN projects ON handovers.project_id = projects.id
        LEFT JOIN contracts ON handovers.contract_id = contracts.id
        LEFT JOIN quotes ON contracts.quote_id = quotes.id
-       LEFT JOIN customers ON quotes.customer_id = customers.id
        ${whereClause}
        ORDER BY handovers.created_at DESC
        LIMIT $1
@@ -287,17 +288,19 @@ export async function listHandoversV2(
     if (filters?.search != null && filters.search.trim() !== '') {
       const likePattern = '%' + filters.search.trim() + '%';
       countConditions.push(
-        `(projects.customer_name ILIKE $${countParamIndex} OR contracts.contract_number ILIKE $${countParamIndex})`
+        `(projects.customer_name ILIKE $${countParamIndex} OR contracts.contract_number ILIKE $${countParamIndex} OR quotes.customer_name ILIKE $${countParamIndex} OR quotes.customer_phone ILIKE $${countParamIndex})`
       );
       countParams.push(likePattern);
     }
+    const countOrgCondition = `handovers.organization_id = (current_setting('app.current_org_id', true))::uuid`;
+    const countAllConditions = [countOrgCondition, ...countConditions];
     const countFrom = `FROM handovers
        JOIN projects ON handovers.project_id = projects.id
        LEFT JOIN contracts ON handovers.contract_id = contracts.id
-       LEFT JOIN quotes ON contracts.quote_id = quotes.id
-       LEFT JOIN customers ON quotes.customer_id = customers.id`;
+       LEFT JOIN quotes ON contracts.quote_id = quotes.id`;
+    const countAllConditions = [countOrgCondition, ...countConditions];
     const countWhereClause =
-      countConditions.length > 0 ? ' WHERE ' + countConditions.join(' AND ') : '';
+      countAllConditions.length > 0 ? ' WHERE ' + countAllConditions.join(' AND ') : '';
     const countResult = await client.query(
       `SELECT COUNT(*)::int ${countFrom}${countWhereClause}`,
       countParams.length > 0 ? countParams : undefined
