@@ -107,7 +107,11 @@ export async function getBatteryRecommendations(
     );
 
     const rankOrder: Record<BatteryRank, number> = { PASS: 0, WARNING: 1, BLOCK: 2 };
-    recommendations.sort((a, b) => rankOrder[a.rank] - rankOrder[b.rank]);
+    recommendations.sort((a, b) => {
+      const rankDiff = rankOrder[a.rank] - rankOrder[b.rank];
+      if (rankDiff !== 0) return rankDiff;
+      return a.sell_price_vnd - b.sell_price_vnd;
+    });
 
     return recommendations;
   });

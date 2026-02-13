@@ -9,39 +9,135 @@ export interface PVGISResult {
   monthly: PVGISMonthlyData[];
   avg: number;
   min_month: number;
+  min_value: number;
+  source: 'PVGIS' | 'NASA' | 'DEFAULT';
 }
 
-/**
- * Mock PVGIS data generator.
- * In production, this would call the real PVGIS API.
- */
-function generateMockPVGIS(
-  _lat: number,
-  _lon: number,
-  _azimuth: number,
-  _tilt: number
-): PVGISResult {
-  const baseIrradiation = 5.0;
+// --- Tier 1: PVGIS API ---
 
-  const monthly: PVGISMonthlyData[] = [];
+async function fetchFromPVGIS(
+  lat: number,
+  lon: number,
+  tilt: number,
+  azimuth: number
+): Promise<PVGISResult> {
+  const url = `https://re.jrc.ec.europa.eu/api/v5_2/PVcalc?lat=${lat}&lon=${lon}&peakpower=1&loss=14&angle=${tilt}&aspect=${azimuth}&outputformat=json`;
 
-  for (let month = 1; month <= 12; month++) {
-    let seasonal = 0;
-    if (month >= 4 && month <= 9) {
-      seasonal = 0.3;
-    } else {
-      seasonal = -0.2;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10000);
+
+  try {
+    const response = await fetch(url, { signal: controller.signal });
+    if (!response.ok) throw new Error(`PVGIS HTTP ${response.status}`);
+
+    const data = await response.json();
+    const monthlyData = data.outputs?.monthly?.fixed;
+    if (!monthlyData || !Array.isArray(monthlyData)) {
+      throw new Error('Invalid PVGIS response format');
     }
 
-    const random = (Math.random() - 0.5) * 0.2;
-    const value = baseIrradiation + seasonal + random;
+    const monthly: PVGISMonthlyData[] = monthlyData.map((m: { month: number; 'H(i)_m': number }) => ({
+      month: m.month,
+      kwh_per_m2_day: Math.round((m['H(i)_m'] / 30) * 100) / 100,
+    }));
 
+    return computeStats(monthly, 'PVGIS');
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+// --- Tier 2: NASA POWER API ---
+
+async function fetchFromNASA(lat: number, lon: number): Promise<PVGISResult> {
+  const url = `https://power.larc.nasa.gov/api/temporal/monthly/point?parameters=ALLSKY_SFC_SW_DWN&community=RE&longitude=${lon}&latitude=${lat}&start=2001&end=2020&format=JSON`;
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15000);
+
+  try {
+    const response = await fetch(url, { signal: controller.signal });
+    if (!response.ok) throw new Error(`NASA POWER HTTP ${response.status}`);
+
+    const data = await response.json();
+    const params = data.properties?.parameter?.ALLSKY_SFC_SW_DWN;
+    if (!params) throw new Error('Invalid NASA POWER response');
+
+    // Compute monthly averages across all years
+    const monthSums: number[] = new Array(12).fill(0);
+    const monthCounts: number[] = new Array(12).fill(0);
+
+    for (const [key, value] of Object.entries(params)) {
+      if (key.length === 6) {
+        const month = parseInt(key.slice(4, 6));
+        const val = value as number;
+        if (month >= 1 && month <= 12 && val > 0) {
+          monthSums[month - 1] += val;
+          monthCounts[month - 1] += 1;
+        }
+      }
+    }
+
+    const monthly: PVGISMonthlyData[] = [];
+    for (let i = 0; i < 12; i++) {
+      const avg = monthCounts[i] > 0 ? monthSums[i] / monthCounts[i] : 4.5;
+      monthly.push({
+        month: i + 1,
+        kwh_per_m2_day: Math.round(avg * 100) / 100,
+      });
+    }
+
+    return computeStats(monthly, 'NASA');
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+// --- Tier 3: Vietnam defaults by latitude ---
+
+function getVietnamDefaults(lat: number): PVGISResult {
+  let baseAvg: number;
+  let range: [number, number];
+
+  if (lat > 18) {
+    // Northern Vietnam
+    baseAvg = 3.8;
+    range = [3.2, 4.5];
+  } else if (lat >= 13) {
+    // Central Vietnam
+    baseAvg = 4.4;
+    range = [3.8, 5.0];
+  } else {
+    // Southern Vietnam
+    baseAvg = 4.9;
+    range = [4.3, 5.5];
+  }
+
+  const monthly: PVGISMonthlyData[] = [];
+  for (let month = 1; month <= 12; month++) {
+    // Seasonal variation: Apr-Sep higher, Oct-Mar lower
+    let seasonal: number;
+    if (month >= 4 && month <= 9) {
+      seasonal = (range[1] - baseAvg) * 0.8;
+    } else {
+      seasonal = (range[0] - baseAvg) * 0.8;
+    }
+    const value = baseAvg + seasonal;
     monthly.push({
       month,
       kwh_per_m2_day: Math.round(value * 100) / 100,
     });
   }
 
+  return computeStats(monthly, 'DEFAULT');
+}
+
+// --- Stats computation ---
+
+function computeStats(
+  monthly: PVGISMonthlyData[],
+  source: PVGISResult['source']
+): PVGISResult {
   const sum = monthly.reduce((acc, m) => acc + m.kwh_per_m2_day, 0);
   const avg = Math.round((sum / 12) * 100) / 100;
 
@@ -55,25 +151,20 @@ function generateMockPVGIS(
     }
   }
 
-  return {
-    monthly,
-    avg,
-    min_month: minMonth,
-  };
+  return { monthly, avg, min_month: minMonth, min_value: minValue, source };
 }
 
-/**
- * Fetch PVGIS data for a roof and persist on project_roofs.
- * Requires project to have customer_address (location).
- */
+// --- Main function with 3-tier fallback ---
+
 export async function fetchPVGIS(
   organizationId: string,
   projectId: string,
   roofId: string
 ): Promise<PVGISResult> {
   return await withOrgContext(organizationId, async (client) => {
+    // Get project coordinates
     const projectResult = await client.query(
-      `SELECT customer_address FROM projects WHERE id = $1 AND organization_id = $2`,
+      `SELECT latitude, longitude, customer_address FROM projects WHERE id = $1 AND organization_id = $2`,
       [projectId, organizationId]
     );
 
@@ -81,12 +172,15 @@ export async function fetchPVGIS(
       throw new Error('Project not found');
     }
 
-    const address = projectResult.rows[0].customer_address;
+    const project = projectResult.rows[0];
+    const lat = project.latitude ? Number(project.latitude) : null;
+    const lon = project.longitude ? Number(project.longitude) : null;
 
-    if (!address || String(address).trim() === '') {
-      throw new Error('Project must have location (address)');
+    if (!lat || !lon) {
+      throw new Error('Chọn vị trí trên bản đồ trước khi lấy dữ liệu bức xạ');
     }
 
+    // Get roof data
     const roofResult = await client.query(
       `SELECT * FROM project_roofs WHERE id = $1 AND project_id = $2 AND organization_id = $3`,
       [roofId, projectId, organizationId]
@@ -98,19 +192,39 @@ export async function fetchPVGIS(
 
     const roof = roofResult.rows[0] as { azimuth: number; tilt: number };
 
-    const lat = 10.8231;
-    const lon = 106.6297;
+    // 3-tier fallback
+    let result: PVGISResult;
 
-    const result = generateMockPVGIS(lat, lon, roof.azimuth, roof.tilt);
+    try {
+      result = await fetchFromPVGIS(lat, lon, roof.tilt || 15, roof.azimuth || 180);
+    } catch (pvgisError) {
+      console.warn('PVGIS failed, trying NASA POWER:', (pvgisError as Error).message);
+      try {
+        result = await fetchFromNASA(lat, lon);
+      } catch (nasaError) {
+        console.warn('NASA POWER failed, using VN defaults:', (nasaError as Error).message);
+        result = getVietnamDefaults(lat);
+      }
+    }
 
+    // Save to project_roofs
     await client.query(
       `UPDATE project_roofs
        SET pvgis_monthly = $1,
            pvgis_avg = $2,
            pvgis_min_month = $3,
+           pvgis_min_value = $4,
+           pvgis_source = $5,
            pvgis_fetched_at = NOW()
-       WHERE id = $4`,
-      [JSON.stringify(result.monthly), result.avg, result.min_month, roofId]
+       WHERE id = $6`,
+      [
+        JSON.stringify(result.monthly),
+        result.avg,
+        result.min_month,
+        result.min_value,
+        result.source,
+        roofId,
+      ]
     );
 
     return result;

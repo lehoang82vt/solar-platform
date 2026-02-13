@@ -14,14 +14,18 @@ import {
   Settings,
   LogOut,
   Bell,
+  Users,
+  Zap,
 } from 'lucide-react';
 
 const navItems = [
   { href: '/admin', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/admin/approvals', label: 'Phê duyệt', icon: CheckCircle },
-  { href: '/admin/analytics', label: 'Phân tích', icon: BarChart3 },
-  { href: '/admin/catalog', label: 'Catalog', icon: Package },
+  { href: '/admin/catalog', label: 'Kho vật tư', icon: Package },
+  { href: '/admin/tariffs', label: 'Biểu giá điện', icon: Zap },
+  { href: '/admin/users', label: 'Tài khoản', icon: Users },
   { href: '/admin/notifications', label: 'Thông báo', icon: Bell },
+  { href: '/admin/analytics', label: 'Phân tích', icon: BarChart3 },
   { href: '/admin/settings', label: 'Cài đặt', icon: Settings },
 ];
 

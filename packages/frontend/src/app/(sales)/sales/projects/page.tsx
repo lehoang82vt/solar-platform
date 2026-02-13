@@ -83,14 +83,14 @@ export default function SalesProjectsPage() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-8">
+      <div className="flex items-center justify-between mb-4 md:mb-8">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Dự án</h1>
+          <h1 className="text-2xl md:text-3xl font-bold text-gray-900">Dự án</h1>
           <p className="text-sm text-gray-500 mt-1">{totalCount} dự án</p>
         </div>
       </div>
 
-      <Card className="p-6 mb-6">
+      <Card className="p-4 md:p-6 mb-4 md:mb-6">
         <div className="flex flex-col sm:flex-row gap-4">
           <div className="flex-1 relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -124,29 +124,58 @@ export default function SalesProjectsPage() {
         <div className="flex items-center justify-center py-12">
           <div className="w-8 h-8 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin" />
         </div>
+      ) : filteredProjects.length === 0 ? (
+        <Card className="p-12 text-center">
+          <FolderOpen className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+          <p className="text-sm text-gray-500">Không có dự án nào</p>
+        </Card>
       ) : (
-        <Card>
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-gray-50 border-b">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Khách hàng</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Trạng thái</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Thống kê</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Ngày tạo</th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Hành động</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y">
-                {filteredProjects.length === 0 ? (
+        <>
+          {/* Mobile: Card view */}
+          <div className="md:hidden space-y-3">
+            {filteredProjects.map((project) => (
+              <Link key={project.id} href={`/sales/projects/${project.id}`}>
+                <Card className="p-4 hover:shadow-md transition-shadow">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <div className="font-medium text-gray-900 truncate">
+                        {project.customer?.name || project.customer_name || 'Chưa có tên'}
+                      </div>
+                      {(project.customer?.phone || project.address) && (
+                        <div className="text-xs text-gray-500 truncate mt-0.5">
+                          {project.customer?.phone || project.address}
+                        </div>
+                      )}
+                    </div>
+                    <Badge className={`shrink-0 text-xs ${STATUS_COLORS[project.status] || 'bg-gray-100 text-gray-700'}`}>
+                      {project.status}
+                    </Badge>
+                  </div>
+                  <div className="flex items-center gap-3 mt-2 text-xs text-gray-500">
+                    <span>{project.stats.quotes_count} BG</span>
+                    <span>{project.stats.contracts_count} HĐ</span>
+                    <span className="ml-auto">{new Date(project.created_at).toLocaleDateString('vi-VN')}</span>
+                  </div>
+                </Card>
+              </Link>
+            ))}
+          </div>
+
+          {/* Desktop: Table view */}
+          <Card className="hidden md:block">
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-gray-50 border-b">
                   <tr>
-                    <td colSpan={5} className="px-6 py-12 text-center">
-                      <FolderOpen className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-                      <p className="text-sm text-gray-500">Không có dự án nào</p>
-                    </td>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Khách hàng</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Trạng thái</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Thống kê</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Ngày tạo</th>
+                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Hành động</th>
                   </tr>
-                ) : (
-                  filteredProjects.map((project) => (
+                </thead>
+                <tbody className="divide-y">
+                  {filteredProjects.map((project) => (
                     <tr key={project.id} className="hover:bg-gray-50">
                       <td className="px-6 py-4">
                         <div className="font-medium text-gray-900">
@@ -179,12 +208,12 @@ export default function SalesProjectsPage() {
                         </Link>
                       </td>
                     </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </Card>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        </>
       )}
     </div>
   );

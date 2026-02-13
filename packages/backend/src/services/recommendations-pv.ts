@@ -71,7 +71,7 @@ export async function getPVRecommendations(
        WHERE organization_id = $1
        AND ready = true
        AND deleted_at IS NULL
-       ORDER BY efficiency DESC NULLS LAST, power_watt DESC`,
+       ORDER BY efficiency DESC NULLS LAST, power_watt DESC, sell_price_vnd ASC`,
       [organizationId]
     );
 

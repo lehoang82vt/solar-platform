@@ -10,6 +10,7 @@ export interface SalesDashboardStats {
 export interface RecentLead {
   id: string;
   phone: string;
+  customer_name: string | null;
   status: string;
   created_at: string;
 }
@@ -61,7 +62,7 @@ export async function getRecentLeads(
 ): Promise<RecentLead[]> {
   return await withOrgContext(organizationId, async (client) => {
     const result = await client.query<RecentLead>(
-      `SELECT id, phone, status, created_at
+      `SELECT id, phone, customer_name, status, created_at
        FROM leads
        WHERE organization_id = $1
        ORDER BY created_at DESC

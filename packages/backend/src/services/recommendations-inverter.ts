@@ -10,6 +10,7 @@ import {
   checkHybridRequired,
   checkBatteryVoltage,
   checkLvHvMismatch,
+  checkPhaseCompatibility,
 } from '../../../shared/src/utils/inverter-validation';
 
 export type InverterRank = 'PASS' | 'WARNING' | 'BLOCK';
@@ -41,12 +42,20 @@ const COLD_TEMP_FACTOR = 1.12;
  */
 export async function getInverterRecommendations(
   organizationId: string,
-  _projectId: string,
+  projectId: string,
   pvModuleId: string,
   panelCount: number,
   batteryId?: string
 ): Promise<InverterRecommendation[]> {
   return await withOrgContext(organizationId, async (client) => {
+    const projectResult = await client.query(
+      `SELECT power_phase FROM projects WHERE id = $1 AND organization_id = $2`,
+      [projectId, organizationId]
+    );
+    const projectPhase: number | null = projectResult.rows[0]?.power_phase
+      ? Number(projectResult.rows[0].power_phase)
+      : null;
+
     const moduleResult = await client.query(
       `SELECT * FROM catalog_pv_modules WHERE id = $1 AND organization_id = $2`,
       [pvModuleId, organizationId]
@@ -174,6 +183,11 @@ export async function getInverterRecommendations(
       const lvHvCheck = checkLvHvMismatch(stringVoltage, maxDcVoltage);
       if (lvHvCheck.result === 'BLOCK' && lvHvCheck.reason) blockReasons.push(lvHvCheck.reason);
 
+      const inverterPhase = inv.phase != null ? Number(inv.phase) : null;
+      const phaseCheck = checkPhaseCompatibility(projectPhase, inverterPhase);
+      if (phaseCheck.result === 'BLOCK' && phaseCheck.reason) blockReasons.push(phaseCheck.reason);
+      if (phaseCheck.result === 'WARNING' && phaseCheck.reason) warningReasons.push(phaseCheck.reason);
+
       let rank: InverterRank = 'PASS';
       if (blockReasons.length > 0) {
         rank = 'BLOCK';
@@ -197,7 +211,11 @@ export async function getInverterRecommendations(
     }
 
     const rankOrder: Record<InverterRank, number> = { PASS: 0, WARNING: 1, BLOCK: 2 };
-    recommendations.sort((a, b) => rankOrder[a.rank] - rankOrder[b.rank]);
+    recommendations.sort((a, b) => {
+      const rankDiff = rankOrder[a.rank] - rankOrder[b.rank];
+      if (rankDiff !== 0) return rankDiff;
+      return a.sell_price_vnd - b.sell_price_vnd;
+    });
 
     return recommendations;
   });

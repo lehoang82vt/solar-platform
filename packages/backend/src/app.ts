@@ -5,7 +5,10 @@ import { config } from './config/env';
 import { isDatabaseConnected, getDatabasePool } from './config/database';
 import { version } from '../../shared/src';
 import { calculateLiteAnalysis } from '../../shared/src/utils/lite-analysis';
-import { loginUser } from './services/users';
+import {
+  loginUser, createUser, listUsers, updateUser,
+  updateUserStatus, deleteUser, resetUserPassword,
+} from './services/users';
 import { requireAuth, requireAdmin } from './middleware/auth';
 import { requestLogger } from './middleware/request-logger';
 import {
@@ -25,6 +28,7 @@ import {
   createProjectFromLead,
   listProjectsLead,
   updateProjectStatus,
+  getProjectsForLead,
 } from './services/projects-lead';
 import { getPVRecommendations } from './services/recommendations-pv';
 import { getBatteryRecommendations } from './services/recommendations-battery';
@@ -124,7 +128,7 @@ import {
 } from './services/bi';
 import { write as auditLogWrite, getDefaultOrganizationId } from './services/auditLog';
 import { getSalesDashboardStats, getRecentLeads } from './services/sales-dashboard';
-import { listLeads, getLeadById, updateLeadStatus, createLead } from './services/leads';
+import { listLeads, getLeadById, updateLeadStatus, updateLead, createLead } from './services/leads';
 import { createOTPChallenge, verifyOTP } from './services/otp';
 import { otpPhoneRateLimiter, otpIpRateLimiter } from './middleware/rate-limiter';
 import {
@@ -142,6 +146,9 @@ import {
 } from './services/catalog';
 import { importCatalog } from './services/catalog-import';
 import { exportCatalog } from './services/catalog-export';
+import {
+  listTariffs, createTariff, updateTariff, deleteTariff, setDefaultTariff,
+} from './services/electricity-tariffs';
 import {
   listNotificationLogs,
   retryFailedNotification,
@@ -371,18 +378,27 @@ app.get('/api/sales/leads/:id', requireAuth, async (req: Request, res: Response)
 app.patch('/api/sales/leads/:id', requireAuth, async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { status } = req.body;
-    if (!status || typeof status !== 'string') {
-      res.status(400).json({ error: 'status is required' });
-      return;
-    }
+    const { status, customer_name, customer_address, notes, phone } = req.body;
     const organizationId = await getDefaultOrganizationId();
-    const lead = await updateLeadStatus(organizationId, id, status);
-    if (!lead) {
-      res.status(404).json({ error: 'Lead not found' });
+
+    // Status update (original behavior)
+    if (status && typeof status === 'string') {
+      const lead = await updateLeadStatus(organizationId, id, status);
+      if (!lead) { res.status(404).json({ error: 'Lead not found' }); return; }
+      res.status(200).json(lead);
       return;
     }
-    res.status(200).json(lead);
+
+    // Field update (new behavior)
+    const hasFields = customer_name !== undefined || customer_address !== undefined || notes !== undefined || phone !== undefined;
+    if (hasFields) {
+      const lead = await updateLead(organizationId, id, { customer_name, customer_address, notes, phone });
+      if (!lead) { res.status(404).json({ error: 'Lead not found' }); return; }
+      res.status(200).json(lead);
+      return;
+    }
+
+    res.status(400).json({ error: 'status or field updates required' });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Internal error';
     res.status(500).json({ error: message });
@@ -391,13 +407,18 @@ app.patch('/api/sales/leads/:id', requireAuth, async (req: Request, res: Respons
 
 app.post('/api/sales/leads', requireAuth, async (req: Request, res: Response) => {
   try {
-    const { phone } = req.body;
+    const { phone, customer_name, customer_address, notes } = req.body;
     if (!phone || typeof phone !== 'string') {
       res.status(400).json({ error: 'phone is required' });
       return;
     }
     const organizationId = await getDefaultOrganizationId();
-    const lead = await createLead(organizationId, { phone: phone.trim() });
+    const lead = await createLead(organizationId, {
+      phone: phone.trim(),
+      customer_name: customer_name?.trim() || undefined,
+      customer_address: customer_address?.trim() || undefined,
+      notes: notes?.trim() || undefined,
+    });
     res.status(201).json(lead);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Internal error';
@@ -408,6 +429,151 @@ app.post('/api/sales/leads', requireAuth, async (req: Request, res: Response) =>
 // Admin-only (for F-03 auth middleware test: wrong_role_returns_403)
 app.get('/api/admin-only', requireAuth, requireAdmin, (_req: Request, res: Response) => {
   res.status(200).json({ ok: true });
+});
+
+// ─── Admin User Management ─────────────────────────────────────────
+
+app.get('/api/admin/users', requireAuth, requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const orgId = req.user?.organization_id ?? (await getDefaultOrganizationId());
+    const users = await listUsers(orgId);
+    res.json({ value: users });
+  } catch (err: unknown) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+app.post('/api/admin/users', requireAuth, requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const orgId = req.user?.organization_id ?? (await getDefaultOrganizationId());
+    const { email, password, full_name, role } = req.body;
+    if (!email || !password || !full_name || !role) {
+      return res.status(400).json({ error: 'email, password, full_name, role are required' });
+    }
+    if (password.length < 6) {
+      return res.status(400).json({ error: 'Password must be at least 6 characters' });
+    }
+    const user = await createUser(orgId, { email, password, full_name, role });
+    res.status(201).json(user);
+  } catch (err: unknown) {
+    const message = (err as Error).message;
+    if (message.includes('duplicate') || message.includes('unique')) {
+      return res.status(409).json({ error: 'Email đã tồn tại' });
+    }
+    res.status(500).json({ error: message });
+  }
+});
+
+app.patch('/api/admin/users/:id', requireAuth, requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const orgId = req.user?.organization_id ?? (await getDefaultOrganizationId());
+    const { full_name, role } = req.body;
+    const user = await updateUser(orgId, req.params.id, { full_name, role });
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    res.json(user);
+  } catch (err: unknown) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+app.patch('/api/admin/users/:id/status', requireAuth, requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const orgId = req.user?.organization_id ?? (await getDefaultOrganizationId());
+    const { status } = req.body;
+    if (!['ACTIVE', 'SUSPENDED'].includes(status)) {
+      return res.status(400).json({ error: 'Status must be ACTIVE or SUSPENDED' });
+    }
+    const user = await updateUserStatus(orgId, req.params.id, status);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    res.json(user);
+  } catch (err: unknown) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+app.delete('/api/admin/users/:id', requireAuth, requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const orgId = req.user?.organization_id ?? (await getDefaultOrganizationId());
+    await deleteUser(orgId, req.params.id);
+    res.status(204).end();
+  } catch (err: unknown) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+app.post('/api/admin/users/:id/reset-password', requireAuth, requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const orgId = req.user?.organization_id ?? (await getDefaultOrganizationId());
+    const { password } = req.body;
+    if (!password || password.length < 6) {
+      return res.status(400).json({ error: 'Password must be at least 6 characters' });
+    }
+    await resetUserPassword(orgId, req.params.id, password);
+    res.json({ ok: true });
+  } catch (err: unknown) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+// ─── Admin Electricity Tariffs ─────────────────────────────────────
+
+app.get('/api/admin/tariffs', requireAuth, requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const orgId = req.user?.organization_id ?? (await getDefaultOrganizationId());
+    const tariffs = await listTariffs(orgId);
+    res.json({ value: tariffs });
+  } catch (err: unknown) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+app.post('/api/admin/tariffs', requireAuth, requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const orgId = req.user?.organization_id ?? (await getDefaultOrganizationId());
+    const { name, tariff_type, effective_from, effective_to, is_default, flat_rate_vnd, tiers } = req.body;
+    if (!name || !tariff_type || !effective_from) {
+      return res.status(400).json({ error: 'name, tariff_type, effective_from are required' });
+    }
+    const tariff = await createTariff(orgId, {
+      name, tariff_type, effective_from, effective_to, is_default, flat_rate_vnd, tiers,
+    });
+    res.status(201).json(tariff);
+  } catch (err: unknown) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+app.put('/api/admin/tariffs/:id', requireAuth, requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const orgId = req.user?.organization_id ?? (await getDefaultOrganizationId());
+    const { name, tariff_type, effective_from, effective_to, is_default, flat_rate_vnd, tiers } = req.body;
+    const tariff = await updateTariff(orgId, req.params.id, {
+      name, tariff_type, effective_from, effective_to, is_default, flat_rate_vnd, tiers,
+    });
+    res.json(tariff);
+  } catch (err: unknown) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+app.delete('/api/admin/tariffs/:id', requireAuth, requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const orgId = req.user?.organization_id ?? (await getDefaultOrganizationId());
+    await deleteTariff(orgId, req.params.id);
+    res.status(204).end();
+  } catch (err: unknown) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+app.post('/api/admin/tariffs/:id/default', requireAuth, requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const orgId = req.user?.organization_id ?? (await getDefaultOrganizationId());
+    await setDefaultTariff(orgId, req.params.id);
+    res.json({ ok: true });
+  } catch (err: unknown) {
+    res.status(500).json({ error: (err as Error).message });
+  }
 });
 
 // NTF-04: Admin notification APIs
@@ -758,6 +924,18 @@ app.get('/api/partner/leads', requirePartnerAuth, async (req: Request, res: Resp
   }
 });
 
+// Get existing projects for a lead (duplicate warning)
+app.get('/api/leads/:leadId/projects', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const organizationId = await getDefaultOrganizationId();
+    const projects = await getProjectsForLead(organizationId, req.params.leadId);
+    res.status(200).json(projects);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Internal server error';
+    res.status(500).json({ error: message });
+  }
+});
+
 // SRV-02: Project from lead + state machine
 app.post('/api/projects/from-lead', requireAuth, async (req: Request, res: Response) => {
   try {
@@ -975,7 +1153,7 @@ app.post(
         res.status(404).json({ error: message });
         return;
       }
-      if (message.includes('location') || message.includes('address')) {
+      if (message.includes('location') || message.includes('address') || message.includes('vị trí')) {
         res.status(400).json({ error: message });
         return;
       }

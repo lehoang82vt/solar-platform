@@ -113,3 +113,113 @@ export function verifyUserToken(token: string): UserJWT | null {
     return null;
   }
 }
+
+// ─── Admin User Management ─────────────────────────────────────────
+
+export interface UserListItem extends User {
+  created_at: string;
+}
+
+/**
+ * List all users in organization
+ */
+export async function listUsers(organizationId: string): Promise<UserListItem[]> {
+  return await withOrgContext(organizationId, async (client) => {
+    const result = await client.query<UserListItem>(
+      `SELECT id, organization_id, email, full_name, role, status, created_at
+       FROM users
+       WHERE organization_id = $1
+       ORDER BY created_at DESC`,
+      [organizationId]
+    );
+    return result.rows;
+  });
+}
+
+/**
+ * Update user profile (name, role)
+ */
+export async function updateUser(
+  organizationId: string,
+  userId: string,
+  data: { full_name?: string; role?: 'ADMIN' | 'SALES' }
+): Promise<User | null> {
+  return await withOrgContext(organizationId, async (client) => {
+    const sets: string[] = [];
+    const params: unknown[] = [organizationId, userId];
+    let idx = 3;
+
+    if (data.full_name !== undefined) {
+      sets.push(`full_name = $${idx++}`);
+      params.push(data.full_name);
+    }
+    if (data.role !== undefined) {
+      sets.push(`role = $${idx++}`);
+      params.push(data.role);
+    }
+
+    if (sets.length === 0) return null;
+
+    sets.push(`updated_at = NOW()`);
+
+    const result = await client.query<User>(
+      `UPDATE users SET ${sets.join(', ')}
+       WHERE organization_id = $1 AND id = $2
+       RETURNING id, organization_id, email, full_name, role, status`,
+      params
+    );
+    return result.rows[0] || null;
+  });
+}
+
+/**
+ * Change user status (ACTIVE / SUSPENDED)
+ */
+export async function updateUserStatus(
+  organizationId: string,
+  userId: string,
+  status: 'ACTIVE' | 'SUSPENDED'
+): Promise<User | null> {
+  return await withOrgContext(organizationId, async (client) => {
+    const result = await client.query<User>(
+      `UPDATE users SET status = $3, updated_at = NOW()
+       WHERE organization_id = $1 AND id = $2
+       RETURNING id, organization_id, email, full_name, role, status`,
+      [organizationId, userId, status]
+    );
+    return result.rows[0] || null;
+  });
+}
+
+/**
+ * Delete user (set status to INACTIVE)
+ */
+export async function deleteUser(
+  organizationId: string,
+  userId: string
+): Promise<void> {
+  await withOrgContext(organizationId, async (client) => {
+    await client.query(
+      `UPDATE users SET status = 'INACTIVE', updated_at = NOW()
+       WHERE organization_id = $1 AND id = $2`,
+      [organizationId, userId]
+    );
+  });
+}
+
+/**
+ * Reset user password (admin action)
+ */
+export async function resetUserPassword(
+  organizationId: string,
+  userId: string,
+  newPassword: string
+): Promise<void> {
+  await withOrgContext(organizationId, async (client) => {
+    await client.query(
+      `UPDATE users SET password_hash = crypt($3, gen_salt('bf')), updated_at = NOW()
+       WHERE organization_id = $1 AND id = $2`,
+      [organizationId, userId, newPassword]
+    );
+  });
+}

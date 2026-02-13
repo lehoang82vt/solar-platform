@@ -187,6 +187,31 @@ export function checkBatteryVoltage(
 /**
  * Check LV/HV system mismatch (LV < 1000V, HV >= 1000V)
  */
+/**
+ * Check phase compatibility between project and inverter
+ * 1-phase inverter + 3-phase project = BLOCK
+ * 3-phase inverter + 1-phase project = WARNING (possible but not optimal)
+ */
+export function checkPhaseCompatibility(
+  projectPhase: number | null,
+  inverterPhase: number | null
+): { result: InverterCheckResult; reason?: string } {
+  if (!projectPhase || !inverterPhase) return { result: 'PASS' };
+  if (projectPhase === 3 && inverterPhase === 1) {
+    return {
+      result: 'BLOCK',
+      reason: 'Inverter 1 pha không tương thích hệ thống 3 pha',
+    };
+  }
+  if (projectPhase === 1 && inverterPhase === 3) {
+    return {
+      result: 'WARNING',
+      reason: 'Inverter 3 pha cho hệ thống 1 pha (không tối ưu)',
+    };
+  }
+  return { result: 'PASS' };
+}
+
 export function checkLvHvMismatch(
   stringVoltage: number,
   inverterMaxDcVoltage: number

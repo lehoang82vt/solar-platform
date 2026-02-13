@@ -259,4 +259,24 @@ export async function setFunnelTimestamp(
   });
 }
 
+/**
+ * Get existing projects for a lead (to warn before creating duplicates).
+ */
+export async function getProjectsForLead(
+  organizationId: string,
+  leadId: string
+): Promise<{ id: string; status: string; customer_name: string | null; created_at: string }[]> {
+  return await withOrgContext(organizationId, async (client) => {
+    const result = await client.query(
+      `SELECT id, status, customer_name, created_at
+       FROM projects
+       WHERE lead_id = $1 AND organization_id = $2
+       AND status != 'CANCELLED'
+       ORDER BY created_at DESC`,
+      [leadId, organizationId]
+    );
+    return result.rows;
+  });
+}
+
 export { StateMachineError };

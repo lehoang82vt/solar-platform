@@ -89,12 +89,22 @@ export function isValidProjectId(id: string): boolean {
   return typeof id === 'string' && UUID_REGEX.test(id);
 }
 
-const PROJECT_PATCH_WHITELIST = ['name', 'address'] as const;
+const PROJECT_PATCH_WHITELIST = [
+  'name', 'address',
+  'customer_name', 'customer_phone', 'customer_address',
+  'latitude', 'longitude', 'power_phase',
+] as const;
 
 /** Patch payload for PATCH /api/projects/:id (F-22). name maps to customer_name in DB. */
 export type ProjectPatch = Partial<{
   name: string;
   address: string | null;
+  customer_name: string | null;
+  customer_phone: string | null;
+  customer_address: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  power_phase: number | null;
 }>;
 
 /** Update project by id (org-safe). Returns { id, changedFields } or null if not found. */
