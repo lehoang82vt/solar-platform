@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -11,7 +11,7 @@ import { useToast } from '@/hooks/use-toast';
 import {
   ArrowLeft, Check, Minus, Plus, Battery, Zap, Settings,
   AlertTriangle, XCircle, CheckCircle, FileText, Loader2,
-  ChevronDown, ChevronUp,
+  ChevronDown,
 } from 'lucide-react';
 
 // --- Types ---
@@ -130,18 +130,167 @@ function QuantityControl({ value, onChange, min = 1 }: {
 
 const formatPrice = (vnd: number) => Number(vnd).toLocaleString('vi-VN') + ' VNĐ';
 
-function RankGroupHeader({ rank, count }: { rank: string; count: number }) {
-  const config = {
-    PASS: { color: 'text-green-700', bg: 'bg-green-50', border: 'border-green-200', label: 'Đề xuất' },
-    WARNING: { color: 'text-yellow-700', bg: 'bg-yellow-50', border: 'border-yellow-200', label: 'Lắp được' },
-    BLOCK: { color: 'text-red-700', bg: 'bg-red-50', border: 'border-red-200', label: 'Không tương thích' },
-  }[rank] || { color: 'text-gray-700', bg: 'bg-gray-50', border: 'border-gray-200', label: rank };
+// --- Custom Dropdown Component ---
+
+function EquipmentDropdown<T extends { id: string; brand: string; model: string; sell_price_vnd: number }>({
+  items,
+  selectedId,
+  onSelect,
+  renderItem,
+  renderSelected,
+  placeholder,
+  groupByRank,
+}: {
+  items: T[];
+  selectedId: string | null;
+  onSelect: (id: string) => void;
+  renderItem: (item: T) => React.ReactNode;
+  renderSelected: (item: T) => React.ReactNode;
+  placeholder: string;
+  groupByRank?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const selectedItem = items.find(i => i.id === selectedId);
+
+  // Group items by rank if applicable
+  const groupedItems = groupByRank ? (() => {
+    const ranked = items as (T & { rank?: string })[];
+    const pass = ranked.filter(i => i.rank === 'PASS' || !i.rank);
+    const warning = ranked.filter(i => i.rank === 'WARNING');
+    const block = ranked.filter(i => i.rank === 'BLOCK');
+    return { pass, warning, block };
+  })() : null;
 
   return (
-    <div className={`flex items-center gap-2 px-3 py-1.5 ${config.bg} ${config.border} border rounded-lg text-xs font-semibold ${config.color}`}>
-      <RankBadge rank={rank} />
-      <span>({count})</span>
+    <div ref={ref} className="relative">
+      {/* Trigger */}
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className={`w-full flex items-center justify-between p-3 md:p-4 border-2 rounded-xl transition-all text-left ${
+          selectedItem
+            ? 'border-green-300 bg-green-50/50'
+            : 'border-gray-200 hover:border-gray-300 bg-white'
+        }`}
+      >
+        {selectedItem ? renderSelected(selectedItem) : (
+          <span className="text-gray-400 text-sm">{placeholder}</span>
+        )}
+        <ChevronDown className={`w-5 h-5 text-gray-400 shrink-0 ml-2 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+
+      {/* Dropdown panel */}
+      {open && (
+        <div className="absolute z-50 left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-xl max-h-80 overflow-y-auto">
+          {groupedItems ? (
+            <>
+              {groupedItems.pass.length > 0 && (
+                <div>
+                  <div className="px-3 py-2 bg-green-50 border-b border-green-100 flex items-center gap-2 sticky top-0">
+                    <CheckCircle className="w-3.5 h-3.5 text-green-600" />
+                    <span className="text-xs font-semibold text-green-700">Đề xuất ({groupedItems.pass.length})</span>
+                  </div>
+                  {groupedItems.pass.map(item => (
+                    <DropdownItem
+                      key={item.id}
+                      selected={selectedId === item.id}
+                      onClick={() => { onSelect(item.id); setOpen(false); }}
+                    >
+                      {renderItem(item)}
+                    </DropdownItem>
+                  ))}
+                </div>
+              )}
+              {groupedItems.warning.length > 0 && (
+                <div>
+                  <div className="px-3 py-2 bg-yellow-50 border-b border-yellow-100 flex items-center gap-2 sticky top-0">
+                    <AlertTriangle className="w-3.5 h-3.5 text-yellow-600" />
+                    <span className="text-xs font-semibold text-yellow-700">Lắp được — Cảnh báo ({groupedItems.warning.length})</span>
+                  </div>
+                  {groupedItems.warning.map(item => (
+                    <DropdownItem
+                      key={item.id}
+                      selected={selectedId === item.id}
+                      onClick={() => { onSelect(item.id); setOpen(false); }}
+                      variant="warning"
+                    >
+                      {renderItem(item)}
+                    </DropdownItem>
+                  ))}
+                </div>
+              )}
+              {groupedItems.block.length > 0 && (
+                <div>
+                  <div className="px-3 py-2 bg-red-50 border-b border-red-100 flex items-center gap-2 sticky top-0">
+                    <XCircle className="w-3.5 h-3.5 text-red-600" />
+                    <span className="text-xs font-semibold text-red-700">Không tương thích ({groupedItems.block.length})</span>
+                  </div>
+                  {groupedItems.block.map(item => (
+                    <DropdownItem
+                      key={item.id}
+                      selected={false}
+                      onClick={() => {}}
+                      variant="block"
+                      disabled
+                    >
+                      {renderItem(item)}
+                    </DropdownItem>
+                  ))}
+                </div>
+              )}
+            </>
+          ) : (
+            items.map(item => (
+              <DropdownItem
+                key={item.id}
+                selected={selectedId === item.id}
+                onClick={() => { onSelect(item.id); setOpen(false); }}
+              >
+                {renderItem(item)}
+              </DropdownItem>
+            ))
+          )}
+        </div>
+      )}
     </div>
+  );
+}
+
+function DropdownItem({ children, selected, onClick, variant, disabled }: {
+  children: React.ReactNode;
+  selected: boolean;
+  onClick: () => void;
+  variant?: 'warning' | 'block';
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={disabled ? undefined : onClick}
+      disabled={disabled}
+      className={`w-full text-left px-3 py-2.5 border-b border-gray-50 last:border-b-0 transition-colors flex items-center gap-2 ${
+        disabled
+          ? 'opacity-50 cursor-not-allowed bg-red-50/30'
+          : selected
+            ? 'bg-green-50'
+            : variant === 'warning'
+              ? 'hover:bg-yellow-50'
+              : 'hover:bg-gray-50'
+      }`}
+    >
+      <div className="flex-1 min-w-0">{children}</div>
+      {selected && <Check className="w-4 h-4 text-green-600 shrink-0" />}
+    </button>
   );
 }
 
@@ -169,11 +318,6 @@ export default function EquipmentSelectionPage() {
   const [saving, setSaving] = useState(false);
   const [creatingQuote, setCreatingQuote] = useState(false);
 
-  // Collapsible state
-  const [pvOpen, setPvOpen] = useState(true);
-  const [batteryOpen, setBatteryOpen] = useState(true);
-  const [inverterOpen, setInverterOpen] = useState(true);
-
   useEffect(() => { loadData(); }, [projectId]);
 
   const loadData = async () => {
@@ -199,11 +343,11 @@ export default function EquipmentSelectionPage() {
         const cfg = cfgRes.value.data.value || cfgRes.value.data.config;
         if (cfg) {
           setExistingConfig(cfg);
-          if (cfg.pv_module_id) { setSelectedPv(cfg.pv_module_id); setPvOpen(false); }
+          if (cfg.pv_module_id) setSelectedPv(cfg.pv_module_id);
           if (cfg.panel_count) setPanelCount(cfg.panel_count);
-          if (cfg.battery_id) { setSelectedBattery(cfg.battery_id); setBatteryOpen(false); }
+          if (cfg.battery_id) setSelectedBattery(cfg.battery_id);
           if (cfg.battery_count) setBatteryCount(cfg.battery_count);
-          if (cfg.inverter_id) { setSelectedInverter(cfg.inverter_id); setInverterOpen(false); }
+          if (cfg.inverter_id) setSelectedInverter(cfg.inverter_id);
           if (cfg.inverter_count) setInverterCount(cfg.inverter_count);
         }
       }
@@ -269,14 +413,6 @@ export default function EquipmentSelectionPage() {
 
   const isBlocked = existingConfig?.validation_status === 'BLOCK';
 
-  // Group items by rank
-  const groupByRank = <T extends { rank?: string }>(items: T[]) => {
-    const pass = items.filter(i => i.rank === 'PASS' || !i.rank);
-    const warning = items.filter(i => i.rank === 'WARNING');
-    const block = items.filter(i => i.rank === 'BLOCK');
-    return { pass, warning, block };
-  };
-
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -300,271 +436,218 @@ export default function EquipmentSelectionPage() {
         reasons={existingConfig?.validation_reasons}
       />
 
-      {/* PV Panels — Collapsible */}
-      <Card className="mb-4 overflow-hidden">
-        <button
-          onClick={() => setPvOpen(!pvOpen)}
-          className="w-full p-4 md:p-6 flex items-center justify-between hover:bg-gray-50 transition-colors"
-        >
-          <div className="flex items-center gap-2">
-            <Zap className="w-5 h-5 text-yellow-500" />
-            <h2 className="text-lg font-semibold">Tấm pin mặt trời</h2>
-          </div>
-          <div className="flex items-center gap-3">
-            {!pvOpen && pvItem && (
-              <div className="text-right hidden sm:block">
-                <span className="text-sm font-medium">{pvItem.brand} {pvItem.model}</span>
-                <span className="text-sm text-gray-500 ml-2">{panelCount} tấm</span>
-                <span className="text-sm font-semibold text-green-600 ml-2">{formatPrice(pvItem.sell_price_vnd * panelCount)}</span>
+      {/* 1. PV Panels */}
+      <Card className="mb-4 p-4 md:p-6">
+        <div className="flex items-center gap-2 mb-3">
+          <Zap className="w-5 h-5 text-yellow-500" />
+          <h2 className="text-lg font-semibold">Tấm pin mặt trời</h2>
+        </div>
+
+        {pvRecs.length === 0 ? (
+          <p className="text-sm text-gray-500">Không có gợi ý. Vui lòng nhập dữ liệu tiêu thụ và mái nhà trước.</p>
+        ) : (
+          <>
+            <EquipmentDropdown
+              items={pvRecs}
+              selectedId={selectedPv}
+              onSelect={(id) => {
+                setSelectedPv(id);
+                const pv = pvRecs.find(p => p.id === id);
+                if (pv?.suggested_panel_count) setPanelCount(pv.suggested_panel_count);
+              }}
+              placeholder="Chọn tấm pin mặt trời..."
+              renderSelected={(pv) => (
+                <div className="flex items-center justify-between flex-1 min-w-0 gap-2">
+                  <div className="min-w-0">
+                    <div className="font-medium text-sm">{pv.brand} {pv.model}</div>
+                    <div className="text-xs text-gray-500">{pv.power_watt}W · {pv.efficiency}%</div>
+                  </div>
+                  <span className="text-sm font-semibold text-green-600 shrink-0">{formatPrice(pv.sell_price_vnd)}</span>
+                </div>
+              )}
+              renderItem={(pv) => (
+                <div className="flex items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="font-medium text-sm">{pv.brand} {pv.model}</div>
+                    <div className="text-xs text-gray-500">
+                      {pv.power_watt}W · {pv.efficiency}%
+                      {pv.suggested_panel_count && ` · Gợi ý ${pv.suggested_panel_count} tấm`}
+                    </div>
+                  </div>
+                  <span className="text-sm font-semibold shrink-0">{formatPrice(pv.sell_price_vnd)}</span>
+                </div>
+              )}
+            />
+            {selectedPv && (
+              <QuantityControl value={panelCount} onChange={setPanelCount} />
+            )}
+            {selectedPv && pvItem && (
+              <div className="mt-2 text-right text-sm">
+                <span className="text-gray-500">Thành tiền: </span>
+                <span className="font-semibold text-green-600">{formatPrice(pvItem.sell_price_vnd * panelCount)}</span>
               </div>
             )}
-            {pvOpen ? <ChevronUp className="w-5 h-5 text-gray-400" /> : <ChevronDown className="w-5 h-5 text-gray-400" />}
-          </div>
-        </button>
+          </>
+        )}
+      </Card>
 
-        {pvOpen && (
-          <div className="px-4 pb-4 md:px-6 md:pb-6 border-t">
-            {pvRecs.length === 0 ? (
-              <p className="text-sm text-gray-500 py-4">Không có gợi ý. Vui lòng nhập dữ liệu tiêu thụ và mái nhà trước.</p>
-            ) : (
-              <div className="space-y-2 pt-4">
-                {pvRecs.map((pv) => (
-                  <div
-                    key={pv.id}
-                    className={`border-2 rounded-xl p-3 md:p-4 cursor-pointer transition-all ${
-                      selectedPv === pv.id
-                        ? 'border-green-500 bg-green-50 shadow-sm'
-                        : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
-                    }`}
-                    onClick={() => {
-                      setSelectedPv(pv.id);
-                      if (pv.suggested_panel_count) setPanelCount(pv.suggested_panel_count);
-                    }}
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="min-w-0 flex-1">
-                        <span className="font-medium text-sm md:text-base">{pv.brand} {pv.model}</span>
-                        <div className="text-xs md:text-sm text-gray-500">
-                          {pv.power_watt}W · {pv.efficiency}%
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2 shrink-0">
-                        <span className="text-sm font-semibold">{formatPrice(pv.sell_price_vnd)}</span>
-                        {selectedPv === pv.id && <Check className="w-5 h-5 text-green-600" />}
-                      </div>
+      {/* 2. Inverter */}
+      <Card className="mb-4 p-4 md:p-6">
+        <div className="flex items-center gap-2 mb-3">
+          <Settings className="w-5 h-5 text-purple-500" />
+          <h2 className="text-lg font-semibold">Inverter</h2>
+        </div>
+
+        {inverterRecs.length === 0 ? (
+          <p className="text-sm text-gray-500">Chọn tấm PV trước để xem gợi ý inverter.</p>
+        ) : (
+          <>
+            <EquipmentDropdown
+              items={inverterRecs}
+              selectedId={selectedInverter}
+              onSelect={(id) => setSelectedInverter(id)}
+              placeholder="Chọn inverter..."
+              groupByRank
+              renderSelected={(inv) => (
+                <div className="flex items-center justify-between flex-1 min-w-0 gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <div className="min-w-0">
+                      <div className="font-medium text-sm">{inv.brand} {inv.model}</div>
+                      <div className="text-xs text-gray-500">{((inv.power_watt || 0) / 1000).toFixed(1)}kW</div>
                     </div>
-                    {pv.suggested_panel_count && (
-                      <div className="text-xs text-gray-500 mt-1">
-                        Gợi ý: {pv.suggested_panel_count} tấm ({((pv.power_watt || 0) * pv.suggested_panel_count / 1000).toFixed(1)} kWp)
+                    <RankBadge rank={inv.rank} />
+                  </div>
+                  <span className="text-sm font-semibold text-green-600 shrink-0">{formatPrice(inv.sell_price_vnd)}</span>
+                </div>
+              )}
+              renderItem={(inv) => {
+                const reasons = inv.block_reasons || [];
+                return (
+                  <div>
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="font-medium text-sm">{inv.brand} {inv.model}</div>
+                        <div className="text-xs text-gray-500">{((inv.power_watt || 0) / 1000).toFixed(1)}kW</div>
+                      </div>
+                      <span className="text-sm font-semibold shrink-0">{formatPrice(inv.sell_price_vnd)}</span>
+                    </div>
+                    {reasons.length > 0 && (
+                      <div className="mt-1">
+                        {reasons.map((r, i) => (
+                          <p key={i} className={`text-xs ${inv.rank === 'BLOCK' ? 'text-red-500' : 'text-yellow-600'}`}>• {r}</p>
+                        ))}
                       </div>
                     )}
                   </div>
-                ))}
-                {selectedPv && (
-                  <QuantityControl value={panelCount} onChange={setPanelCount} />
-                )}
+                );
+              }}
+            />
+            {selectedInverter && (
+              <QuantityControl value={inverterCount} onChange={setInverterCount} />
+            )}
+            {selectedInverter && invItem && (
+              <div className="mt-2 text-right text-sm">
+                <span className="text-gray-500">Thành tiền: </span>
+                <span className="font-semibold text-green-600">{formatPrice(invItem.sell_price_vnd * inverterCount)}</span>
               </div>
             )}
-          </div>
+          </>
         )}
       </Card>
 
-      {/* Inverter — Collapsible with rank groups */}
-      <Card className="mb-4 overflow-hidden">
-        <button
-          onClick={() => setInverterOpen(!inverterOpen)}
-          className="w-full p-4 md:p-6 flex items-center justify-between hover:bg-gray-50 transition-colors"
-        >
-          <div className="flex items-center gap-2">
-            <Settings className="w-5 h-5 text-purple-500" />
-            <h2 className="text-lg font-semibold">Inverter</h2>
-          </div>
-          <div className="flex items-center gap-3">
-            {!inverterOpen && invItem && (
-              <div className="flex items-center gap-2 hidden sm:flex">
-                <span className="text-sm font-medium">{invItem.brand} {invItem.model}</span>
-                <RankBadge rank={invItem.rank} />
-                <span className="text-sm font-semibold text-green-600">{formatPrice(invItem.sell_price_vnd * inverterCount)}</span>
-              </div>
-            )}
-            {inverterOpen ? <ChevronUp className="w-5 h-5 text-gray-400" /> : <ChevronDown className="w-5 h-5 text-gray-400" />}
-          </div>
-        </button>
+      {/* 3. Battery (optional) */}
+      <Card className="mb-4 p-4 md:p-6">
+        <div className="flex items-center gap-2 mb-3">
+          <Battery className="w-5 h-5 text-green-500" />
+          <h2 className="text-lg font-semibold">Pin lưu trữ</h2>
+          <span className="text-xs text-gray-400">(tuỳ chọn)</span>
+        </div>
 
-        {inverterOpen && (
-          <div className="px-4 pb-4 md:px-6 md:pb-6 border-t">
-            {inverterRecs.length === 0 ? (
-              <p className="text-sm text-gray-500 py-4">Chọn tấm PV trước để xem gợi ý inverter.</p>
-            ) : (
-              <div className="space-y-4 pt-4">
-                {(() => {
-                  const groups = groupByRank(inverterRecs);
-                  return (
-                    <>
-                      {groups.pass.length > 0 && (
-                        <div>
-                          <RankGroupHeader rank="PASS" count={groups.pass.length} />
-                          <div className="space-y-2 mt-2">
-                            {groups.pass.map((inv) => (
-                              <InverterItem
-                                key={inv.id}
-                                inv={inv}
-                                selected={selectedInverter === inv.id}
-                                onSelect={() => { setSelectedInverter(inv.id); }}
-                              />
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                      {groups.warning.length > 0 && (
-                        <div>
-                          <RankGroupHeader rank="WARNING" count={groups.warning.length} />
-                          <div className="space-y-2 mt-2">
-                            {groups.warning.map((inv) => (
-                              <InverterItem
-                                key={inv.id}
-                                inv={inv}
-                                selected={selectedInverter === inv.id}
-                                onSelect={() => { setSelectedInverter(inv.id); }}
-                              />
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                      {groups.block.length > 0 && (
-                        <div>
-                          <RankGroupHeader rank="BLOCK" count={groups.block.length} />
-                          <div className="space-y-2 mt-2">
-                            {groups.block.map((inv) => (
-                              <InverterItem
-                                key={inv.id}
-                                inv={inv}
-                                selected={false}
-                                onSelect={() => {}}
-                                disabled
-                              />
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </>
-                  );
-                })()}
-                {selectedInverter && (
-                  <QuantityControl value={inverterCount} onChange={setInverterCount} />
-                )}
-              </div>
-            )}
+        {batteryRecs.length === 0 ? (
+          <div>
+            <p className="text-sm text-gray-500 mb-2">Không có gợi ý pin lưu trữ.</p>
+            <div className="p-3 bg-gray-50 rounded-lg text-sm text-gray-600 flex items-center gap-2">
+              <Check className="w-4 h-4 text-green-500" />
+              Không sử dụng pin lưu trữ
+            </div>
           </div>
-        )}
-      </Card>
+        ) : (
+          <>
+            {/* Toggle: dùng pin hay không */}
+            <div className="flex gap-2 mb-3">
+              <button
+                type="button"
+                onClick={() => setSelectedBattery(null)}
+                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                  selectedBattery === null
+                    ? 'bg-gray-800 text-white'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
+              >
+                Không dùng pin
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  // Select first PASS battery
+                  const first = batteryRecs.find(b => b.rank === 'PASS' || !b.rank) || batteryRecs[0];
+                  if (first && !selectedBattery) setSelectedBattery(first.id);
+                }}
+                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                  selectedBattery !== null
+                    ? 'bg-green-600 text-white'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
+              >
+                Dùng pin lưu trữ
+              </button>
+            </div>
 
-      {/* Battery Storage — Collapsible with rank groups */}
-      <Card className="mb-4 overflow-hidden">
-        <button
-          onClick={() => setBatteryOpen(!batteryOpen)}
-          className="w-full p-4 md:p-6 flex items-center justify-between hover:bg-gray-50 transition-colors"
-        >
-          <div className="flex items-center gap-2">
-            <Battery className="w-5 h-5 text-green-500" />
-            <h2 className="text-lg font-semibold">Pin lưu trữ</h2>
-            <span className="text-xs text-gray-400">(tuỳ chọn)</span>
-          </div>
-          <div className="flex items-center gap-3">
-            {!batteryOpen && batItem && (
-              <div className="flex items-center gap-2 hidden sm:flex">
-                <span className="text-sm font-medium">{batItem.brand} {batItem.model}</span>
-                <RankBadge rank={batItem.rank} />
-                <span className="text-sm font-semibold text-green-600">{formatPrice(batItem.sell_price_vnd * batteryCount)}</span>
-              </div>
-            )}
-            {!batteryOpen && !selectedBattery && (
-              <span className="text-xs text-gray-400 hidden sm:block">Không dùng pin</span>
-            )}
-            {batteryOpen ? <ChevronUp className="w-5 h-5 text-gray-400" /> : <ChevronDown className="w-5 h-5 text-gray-400" />}
-          </div>
-        </button>
-
-        {batteryOpen && (
-          <div className="px-4 pb-4 md:px-6 md:pb-6 border-t">
-            {batteryRecs.length === 0 ? (
-              <p className="text-sm text-gray-500 py-4">Không có gợi ý pin lưu trữ.</p>
-            ) : (
-              <div className="space-y-4 pt-4">
-                {/* No battery option */}
-                <div
-                  className={`border-2 rounded-xl p-3 cursor-pointer transition-all ${
-                    selectedBattery === null
-                      ? 'border-green-500 bg-green-50'
-                      : 'border-gray-200 hover:border-gray-300'
-                  }`}
-                  onClick={() => setSelectedBattery(null)}
-                >
-                  <div className="flex items-center gap-2">
-                    {selectedBattery === null && <Check className="w-4 h-4 text-green-600" />}
-                    <span className="text-sm text-gray-600">Không sử dụng pin lưu trữ</span>
+            {selectedBattery !== null && (
+              <>
+                <EquipmentDropdown
+                  items={batteryRecs}
+                  selectedId={selectedBattery}
+                  onSelect={(id) => setSelectedBattery(id)}
+                  placeholder="Chọn pin lưu trữ..."
+                  groupByRank
+                  renderSelected={(bat) => (
+                    <div className="flex items-center justify-between flex-1 min-w-0 gap-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <div className="min-w-0">
+                          <div className="font-medium text-sm">{bat.brand} {bat.model}</div>
+                          <div className="text-xs text-gray-500">{bat.capacity_kwh}kWh</div>
+                        </div>
+                        <RankBadge rank={bat.rank} />
+                      </div>
+                      <span className="text-sm font-semibold text-green-600 shrink-0">{formatPrice(bat.sell_price_vnd)}</span>
+                    </div>
+                  )}
+                  renderItem={(bat) => (
+                    <div>
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="min-w-0">
+                          <div className="font-medium text-sm">{bat.brand} {bat.model}</div>
+                          <div className="text-xs text-gray-500">{bat.capacity_kwh}kWh</div>
+                        </div>
+                        <span className="text-sm font-semibold shrink-0">{formatPrice(bat.sell_price_vnd)}</span>
+                      </div>
+                      {bat.block_reason && (
+                        <p className="text-xs text-red-500 mt-1">• {bat.block_reason}</p>
+                      )}
+                    </div>
+                  )}
+                />
+                <QuantityControl value={batteryCount} onChange={setBatteryCount} />
+                {batItem && (
+                  <div className="mt-2 text-right text-sm">
+                    <span className="text-gray-500">Thành tiền: </span>
+                    <span className="font-semibold text-green-600">{formatPrice(batItem.sell_price_vnd * batteryCount)}</span>
                   </div>
-                </div>
-
-                {(() => {
-                  const groups = groupByRank(batteryRecs);
-                  return (
-                    <>
-                      {groups.pass.length > 0 && (
-                        <div>
-                          <RankGroupHeader rank="PASS" count={groups.pass.length} />
-                          <div className="space-y-2 mt-2">
-                            {groups.pass.map((bat) => (
-                              <BatteryItem
-                                key={bat.id}
-                                bat={bat}
-                                selected={selectedBattery === bat.id}
-                                onSelect={() => setSelectedBattery(bat.id)}
-                              />
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                      {groups.warning.length > 0 && (
-                        <div>
-                          <RankGroupHeader rank="WARNING" count={groups.warning.length} />
-                          <div className="space-y-2 mt-2">
-                            {groups.warning.map((bat) => (
-                              <BatteryItem
-                                key={bat.id}
-                                bat={bat}
-                                selected={selectedBattery === bat.id}
-                                onSelect={() => setSelectedBattery(bat.id)}
-                              />
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                      {groups.block.length > 0 && (
-                        <div>
-                          <RankGroupHeader rank="BLOCK" count={groups.block.length} />
-                          <div className="space-y-2 mt-2">
-                            {groups.block.map((bat) => (
-                              <BatteryItem
-                                key={bat.id}
-                                bat={bat}
-                                selected={false}
-                                onSelect={() => {}}
-                                disabled
-                              />
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </>
-                  );
-                })()}
-                {selectedBattery && (
-                  <QuantityControl value={batteryCount} onChange={setBatteryCount} />
                 )}
-              </div>
+              </>
             )}
-          </div>
+          </>
         )}
       </Card>
 
@@ -611,93 +694,6 @@ export default function EquipmentSelectionPage() {
               {creatingQuote ? 'Đang tạo...' : 'Tạo báo giá'}
             </Button>
           </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// --- Sub-components for items ---
-
-function InverterItem({ inv, selected, onSelect, disabled }: {
-  inv: InverterRecommendation;
-  selected: boolean;
-  onSelect: () => void;
-  disabled?: boolean;
-}) {
-  const reasons = inv.block_reasons || [];
-  const powerKw = (inv.power_watt || 0) / 1000;
-
-  return (
-    <div
-      className={`border-2 rounded-xl p-3 md:p-4 transition-all ${
-        disabled
-          ? 'border-red-200 bg-red-50/50 opacity-60 cursor-not-allowed'
-          : selected
-            ? 'border-green-500 bg-green-50 shadow-sm cursor-pointer'
-            : inv.rank === 'WARNING'
-              ? 'border-yellow-200 hover:border-yellow-300 cursor-pointer'
-              : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50 cursor-pointer'
-      }`}
-      onClick={() => !disabled && onSelect()}
-    >
-      <div className="flex items-center justify-between gap-2">
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-medium text-sm md:text-base">{inv.brand} {inv.model}</span>
-            <span className="text-xs text-gray-500">{powerKw.toFixed(1)}kW</span>
-          </div>
-          {reasons.length > 0 && (
-            <div className="mt-1 space-y-0.5">
-              {reasons.map((r, i) => (
-                <p key={i} className={`text-xs ${disabled ? 'text-red-600' : 'text-yellow-700'}`}>
-                  • {r}
-                </p>
-              ))}
-            </div>
-          )}
-        </div>
-        <div className="flex items-center gap-2 shrink-0">
-          <span className="text-sm font-semibold">{formatPrice(inv.sell_price_vnd)}</span>
-          {selected && <Check className="w-5 h-5 text-green-600" />}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function BatteryItem({ bat, selected, onSelect, disabled }: {
-  bat: BatteryRecommendation;
-  selected: boolean;
-  onSelect: () => void;
-  disabled?: boolean;
-}) {
-  return (
-    <div
-      className={`border-2 rounded-xl p-3 md:p-4 transition-all ${
-        disabled
-          ? 'border-red-200 bg-red-50/50 opacity-60 cursor-not-allowed'
-          : selected
-            ? 'border-green-500 bg-green-50 shadow-sm cursor-pointer'
-            : bat.rank === 'WARNING'
-              ? 'border-yellow-200 hover:border-yellow-300 cursor-pointer'
-              : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50 cursor-pointer'
-      }`}
-      onClick={() => !disabled && onSelect()}
-    >
-      <div className="flex items-center justify-between gap-2">
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-medium text-sm md:text-base">{bat.brand} {bat.model}</span>
-            <span className="text-xs text-gray-500">{bat.capacity_kwh}kWh</span>
-          </div>
-          {bat.block_reason && (
-            <p className="text-xs text-red-600 mt-1">{bat.block_reason}</p>
-          )}
-        </div>
-        <div className="flex items-center gap-2 shrink-0">
-          <span className="text-sm font-semibold">{formatPrice(bat.sell_price_vnd)}</span>
-          {selected && <Check className="w-5 h-5 text-green-600" />}
         </div>
       </div>
     </div>
