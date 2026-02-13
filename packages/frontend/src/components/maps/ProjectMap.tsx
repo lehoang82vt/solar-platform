@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { MapPin, Navigation, Loader2 } from 'lucide-react';
+import 'mapbox-gl/dist/mapbox-gl.css';
 
 const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || '';
 const DEFAULT_CENTER: [number, number] = [106.6297, 10.8231]; // HCM
@@ -16,8 +17,10 @@ interface ProjectMapProps {
 
 export default function ProjectMap({ latitude, longitude, onLocationChange }: ProjectMapProps) {
   const mapContainer = useRef<HTMLDivElement>(null);
-  const mapRef = useRef<mapboxgl.Map | null>(null);
-  const markerRef = useRef<mapboxgl.Marker | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const mapRef = useRef<any>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const markerRef = useRef<any>(null);
   const [locating, setLocating] = useState(false);
   const [mapLoaded, setMapLoaded] = useState(false);
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(
@@ -81,7 +84,8 @@ export default function ProjectMap({ latitude, longitude, onLocationChange }: Pr
         handleLocationUpdate(lngLat.lat, lngLat.lng);
       });
 
-      map.on('click', (e) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      map.on('click', (e: any) => {
         marker.setLngLat(e.lngLat).addTo(map);
         handleLocationUpdate(e.lngLat.lat, e.lngLat.lng);
       });
@@ -161,7 +165,7 @@ export default function ProjectMap({ latitude, longitude, onLocationChange }: Pr
 
       {coords && (
         <p className="text-xs text-gray-500">
-          {coords.lat.toFixed(6)}, {coords.lng.toFixed(6)}
+          📍 {coords.lat.toFixed(6)}, {coords.lng.toFixed(6)}
         </p>
       )}
       {!coords && (

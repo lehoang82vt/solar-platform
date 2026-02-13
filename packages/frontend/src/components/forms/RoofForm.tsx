@@ -15,7 +15,7 @@ import {
 } from '@/components/ui/dialog';
 import { api } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
-import { Plus, Pencil, Trash2, Sun, Home, MapPin, Navigation, Loader2 } from 'lucide-react';
+import { Plus, Pencil, Trash2, Sun, Home, Navigation, Loader2 } from 'lucide-react';
 
 interface Roof {
   id: string;
@@ -60,8 +60,6 @@ export default function RoofForm({ projectId, hasCoordinates = false, onChanged 
   const [usablePctSlider, setUsablePctSlider] = useState(80);
   const [saving, setSaving] = useState(false);
   const [fetchingPvgis, setFetchingPvgis] = useState<string | null>(null);
-  const [gpsLocation, setGpsLocation] = useState<{ lat: number; lng: number } | null>(null);
-  const [gpsLoading, setGpsLoading] = useState(false);
 
   useEffect(() => { loadRoofs(); }, [projectId]);
 
@@ -142,26 +140,6 @@ export default function RoofForm({ projectId, hasCoordinates = false, onChanged 
     }
   };
 
-  const handleGetGPS = () => {
-    if (!navigator.geolocation) {
-      toast({ title: 'Lỗi', description: 'Trình duyệt không hỗ trợ GPS', variant: 'destructive' });
-      return;
-    }
-    setGpsLoading(true);
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        setGpsLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude });
-        setGpsLoading(false);
-        toast({ title: 'GPS', description: `Vị trí: ${pos.coords.latitude.toFixed(5)}, ${pos.coords.longitude.toFixed(5)}` });
-      },
-      () => {
-        setGpsLoading(false);
-        toast({ title: 'Lỗi', description: 'Không thể lấy vị trí GPS', variant: 'destructive' });
-      },
-      { enableHighAccuracy: true, timeout: 10000 }
-    );
-  };
-
   if (loading) {
     return <Card className="p-6"><div className="text-center text-gray-500">Đang tải...</div></Card>;
   }
@@ -174,26 +152,10 @@ export default function RoofForm({ projectId, hasCoordinates = false, onChanged 
             <Home className="w-5 h-5 text-blue-500" />
             <h3 className="text-lg font-semibold">Mái nhà ({roofs.length})</h3>
           </div>
-          <div className="flex gap-2">
-            <Button size="sm" variant="outline" onClick={handleGetGPS} disabled={gpsLoading}>
-              <MapPin className="w-4 h-4 mr-1" />
-              {gpsLoading ? 'Đang lấy...' : 'Vị trí GPS'}
-            </Button>
-            <Button size="sm" onClick={openAdd}>
-              <Plus className="w-4 h-4 mr-1" /> Thêm mái
-            </Button>
-          </div>
+          <Button size="sm" onClick={openAdd}>
+            <Plus className="w-4 h-4 mr-1" /> Thêm mái
+          </Button>
         </div>
-
-        {/* GPS display */}
-        {gpsLocation && (
-          <div className="mb-4 p-3 bg-blue-50 rounded-lg flex items-center gap-2 text-sm">
-            <MapPin className="w-4 h-4 text-blue-500" />
-            <span className="text-blue-700">
-              Vị trí: {gpsLocation.lat.toFixed(5)}, {gpsLocation.lng.toFixed(5)}
-            </span>
-          </div>
-        )}
 
         {roofs.length === 0 ? (
           <p className="text-sm text-gray-500 text-center py-6">Chưa có mái nào. Nhấn &quot;Thêm mái&quot; để bắt đầu.</p>
