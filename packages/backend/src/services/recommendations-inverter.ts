@@ -29,11 +29,13 @@ export interface InverterRecommendation {
   block_reasons: string[];
 }
 
-const MPPT_MIN_V = 150;
-const MPPT_MAX_V = 850;
-const START_VOLTAGE_V = 180;
-const MPPT_MAX_CURRENT_A = 30;
 const COLD_TEMP_FACTOR = 1.12;
+
+// Default MPPT specs (fallback for backward compatibility)
+const DEFAULT_MPPT_MIN_V = 150;
+const DEFAULT_MPPT_MAX_V = 850;
+const DEFAULT_START_VOLTAGE_V = 180;
+const DEFAULT_MPPT_MAX_CURRENT_A = 30;
 
 /**
  * Get inverter recommendations for a project + PV module + panel count.
@@ -99,6 +101,20 @@ export async function getInverterRecommendations(
       const maxDcVoltage = Number(inv.max_dc_voltage);
       const mpptCount = Number(inv.mppt_count);
 
+      // Get per-inverter MPPT specs from DB, with fallback to defaults
+      const mpptMinVoltage = inv.mppt_min_voltage != null 
+        ? Number(inv.mppt_min_voltage) 
+        : DEFAULT_MPPT_MIN_V;
+      const mpptMaxVoltage = inv.mppt_max_voltage != null 
+        ? Number(inv.mppt_max_voltage) 
+        : DEFAULT_MPPT_MAX_V;
+      const startVoltage = inv.start_voltage != null 
+        ? Number(inv.start_voltage) 
+        : DEFAULT_START_VOLTAGE_V;
+      const mpptMaxCurrent = inv.mppt_max_current != null 
+        ? Number(inv.mppt_max_current) 
+        : DEFAULT_MPPT_MAX_CURRENT_A;
+
       const maxPanelsPerString = Math.max(
         1,
         Math.floor(maxDcVoltage / (moduleVoc * COLD_TEMP_FACTOR))
@@ -136,18 +152,18 @@ export async function getInverterRecommendations(
       const mpptCheck = checkMpptRange(
         moduleVmp,
         stringing.panels_per_string,
-        MPPT_MIN_V,
-        MPPT_MAX_V
+        mpptMinVoltage,
+        mpptMaxVoltage
       );
       if (mpptCheck.result === 'BLOCK' && mpptCheck.reason) blockReasons.push(mpptCheck.reason);
 
-      const startCheck = checkStartVoltage(moduleVmp, stringing.panels_per_string, START_VOLTAGE_V);
+      const startCheck = checkStartVoltage(moduleVmp, stringing.panels_per_string, startVoltage);
       if (startCheck.result === 'BLOCK' && startCheck.reason) blockReasons.push(startCheck.reason);
 
       const currentCheck = checkMpptCurrent(
         moduleImp,
         stringing.panels_per_string,
-        MPPT_MAX_CURRENT_A
+        mpptMaxCurrent
       );
       if (currentCheck.result === 'BLOCK' && currentCheck.reason)
         blockReasons.push(currentCheck.reason);
