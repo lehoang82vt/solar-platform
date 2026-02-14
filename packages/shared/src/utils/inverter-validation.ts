@@ -75,13 +75,16 @@ export function checkStartVoltage(
 
 /**
  * Check if MPPT current is within limits (uses Imp, not Isc)
+ * Note: In series connection, current doesn't add - only voltage does.
+ * So we use moduleImp directly, not multiplied by panelsPerString.
  */
 export function checkMpptCurrent(
   moduleImp: number,
   panelsPerString: number,
   mpptMaxCurrent: number
 ): { result: InverterCheckResult; reason?: string } {
-  const current = moduleImp * panelsPerString;
+  // In series connection: voltage adds, current stays the same
+  const current = moduleImp;
 
   if (current > mpptMaxCurrent) {
     return {
